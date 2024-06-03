@@ -1,0 +1,32 @@
+[workspace]
+members = ["macros"]
+
+[package]
+name = "mysql-connector"
+version = "0.0.1"
+edition = "2021"
+description = "Simple MySQL connector that allows exchanging the underlying connection"
+license = "MIT"
+authors = ["Untbu", "Comet1903"]
+repository = "https://github.com/riseupgroup/mysql-connector"
+readme = "README.md"
+categories = ["database"]
+
+[features]
+default = ["tcpstream"]
+tcpstream = ["tokio/net"]
+serde = ["dep:serde"]
+
+[dependencies]
+mysql-connector-macros = { path = "./macros", version = "0.0.1" }
+bitflags = "2.5.0"
+btoi = "0.4.3"
+bytes = "1.6.0"
+chrono = "0.4.38"
+crossbeam = "0.8.4"
+lazy_static = "1.4.0"
+paste = "1.0.15"
+sha1 = "0.10.6"
+tokio = { version = "1.38.0", features = ["sync", "io-util"] }
+serde = { version = "1.0.203", optional = true }
+hex = "0.4.3"
