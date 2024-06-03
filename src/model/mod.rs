@@ -1,5 +1,6 @@
 mod active_model;
 mod from_query_result;
+mod into_query;
 mod plain;
 
 #[cfg(test)]
@@ -8,6 +9,7 @@ mod test;
 pub use {
     active_model::{ActiveModel, ActiveValue, HasActiveModel, NamedValue, UpdateModel},
     from_query_result::{FromQueryResult, FromQueryResultMapping},
+    into_query::{IntoQuery, QueryColumn, QueryColumnReference},
 };
 
 pub trait ModelData: std::fmt::Debug + Sized {

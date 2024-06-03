@@ -7,6 +7,8 @@ use {
 pub struct Column {
     org_name: String,
     name: String,
+    org_table: String,
+    table: String,
     r#type: ColumnType,
     flags: ColumnFlags,
 }
@@ -18,6 +20,8 @@ impl<'a> TryFrom<ColumnDef<'a>> for Column {
         Ok(Self {
             org_name: String::from_utf8(value.org_name.as_bytes().to_vec())?,
             name: String::from_utf8(value.name.as_bytes().to_vec())?,
+            org_table: String::from_utf8(value.org_table.as_bytes().to_vec())?,
+            table: String::from_utf8(value.table.as_bytes().to_vec())?,
             r#type: value.r#type,
             flags: value.flags,
         })
@@ -31,6 +35,14 @@ impl Column {
 
     pub fn name(&self) -> &str {
         &self.name
+    }
+
+    pub fn org_table(&self) -> &str {
+        &self.org_table
+    }
+
+    pub fn table(&self) -> &str {
+        &self.table
     }
 
     pub fn r#type(&self) -> ColumnType {
