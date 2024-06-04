@@ -12,6 +12,9 @@ repository = "https://github.com/riseupgroup/mysql-connector"
 readme = "README.md"
 categories = ["database"]
 
+[package.metadata.docs.rs]
+all-features = true
+
 [features]
 default = ["tcpstream"]
 tcpstream = ["tokio/net"]
