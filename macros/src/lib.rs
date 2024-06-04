@@ -207,8 +207,27 @@ pub fn derive_active_model(input: TokenStream) -> TokenStream {
     let mut error = Error::empty();
     let input = parse_macro_input!(input as DeriveInput);
 
-    let (_, _, types) = parse_attr(&mut error, input.ident.span(), &input.attrs);
+    let (attr_span, attrs, types) = parse_attr(&mut error, input.ident.span(), &input.attrs);
     let fields = parse_fields(&mut error, input.ident.span(), &input.data, &types);
+
+    let primary = match attr_span {
+        Some(span) => match attrs.get("primary") {
+            Some(primary) => {
+                match attrs.get("auto_increment") {
+                    Some(ai) => Some((format_ident!("{primary}"), ai == "true")),
+                    None => {
+                        error.add(
+                            span,
+                            "auto_increment needed (#[mysql_connector(auto_increment = \"...\")]",
+                        );
+                        None
+                    }
+                }
+            }
+            None => None,
+        },
+        None => None,
+};
 
     if let Some(error) = error.error() {
         return error.into_compile_error().into();
@@ -240,6 +259,27 @@ pub fn derive_active_model(input: TokenStream) -> TokenStream {
         .filter(TypeComplexity::simple_ref)
         .map(|x| &x.ident)
         .collect();
+    let (simple_field_names_without_primary, set_primary) = primary.as_ref().map(|(primary, auto_increment)| {
+        if *auto_increment {
+            let field_names = simple_field_names.iter().filter(|x| **x != primary).map(|x| *x).collect();
+            let set_primary = quote! {
+                #primary: mysql_connector::model::ActiveValue::Unset,
+            };
+            Some((field_names, set_primary))
+        } else {
+            None
+        }
+    }).flatten().unwrap_or_else(|| (simple_field_names.clone(), proc_macro2::TokenStream::new()));
+    let get_primary = match primary {
+        Some((primary, _)) => quote! {
+            match self.#primary {
+                mysql_connector::model::ActiveValue::Set(x) => Some(x.into()),
+                mysql_connector::model::ActiveValue::Unset => None,
+            }
+        },
+        None => quote!{None},
+    };
+    
     let simple_field_types: &Vec<&Type> = &fields
         .iter()
         .filter(TypeComplexity::simple_ref)
@@ -275,21 +315,34 @@ pub fn derive_active_model(input: TokenStream) -> TokenStream {
             pub struct #model_ident {
                 #(pub #simple_field_names: mysql_connector::model::ActiveValue<#simple_field_types>,)*
                 #(pub #struct_field_names: mysql_connector::model::ActiveValue<#struct_field_types>,)*
-                #(pub #complex_field_names: mysql_connector::model::ActiveValue<<#complex_field_types as mysql_connector::model::Model>::Primary>,)*
+                #(pub #complex_field_names: mysql_connector::model::ActiveReference<#complex_field_types>,)*
             }
 
             impl mysql_connector::model::ActiveModel<#ident> for #model_ident {
-                fn into_values(self) -> Result<Vec<mysql_connector::model::NamedValue>, mysql_connector::error::Error> {
+                async fn into_values<S: mysql_connector::Socket>(self, conn: &mut mysql_connector::Connection<S>) -> Result<Vec<mysql_connector::model::NamedValue>, mysql_connector::error::Error> {
                     let mut values = Vec::new();
                     #(self.#simple_field_names.insert_named_value(&mut values, stringify!(#simple_field_names))?;)*
                     #insert_struct_fields
-                    #(self.#complex_field_names.insert_named_value(&mut values, stringify!(#complex_field_names))?;)*
+                    #(self.#complex_field_names.insert_named_value(&mut values, stringify!(#complex_field_names), conn).await?;)*
                     Ok(values)
+                }
+
+                fn primary(&self) -> Option<mysql_connector::types::Value> {
+                    #get_primary
                 }
             }
 
             impl mysql_connector::model::HasActiveModel for #ident {
                 type ActiveModel = #model_ident;
+
+                fn into_active_model(self) -> Self::ActiveModel {
+                    #model_ident {
+                        #set_primary
+                        #(#simple_field_names_without_primary: mysql_connector::model::ActiveValue::Set(self.#simple_field_names_without_primary),)*
+                        #(#struct_field_names: mysql_connector::model::ActiveValue::Set(self.#struct_field_names),)*
+                        #(#complex_field_names: mysql_connector::model::ActiveReference::Insert(<#complex_field_types as mysql_connector::model::HasActiveModel>::into_active_model(self.#complex_field_names)),)*
+                    }
+                }
             }
         };
     }.into()
@@ -358,6 +411,7 @@ pub fn derive_model(input: TokenStream) -> TokenStream {
     let fields = parse_fields(&mut error, input.ident.span(), &input.data, &types);
 
     let mut primary_type = None;
+    let mut auto_increment = false;
     if let Some(span) = attr_span {
         match attrs.get("primary") {
             Some(primary) => match fields.iter().find(|field| field.ident == primary) {
@@ -367,6 +421,13 @@ pub fn derive_model(input: TokenStream) -> TokenStream {
             None => error.add(
                 span,
                 "primary needed (#[mysql_connector(primary = \"...\")]",
+            ),
+        }
+        match attrs.get("auto_increment") {
+            Some(ai) => auto_increment = ai == "true",
+            None => error.add(
+                span,
+                "auto_increment needed (#[mysql_connector(auto_increment = \"...\")]",
             ),
         }
     }
@@ -383,11 +444,12 @@ pub fn derive_model(input: TokenStream) -> TokenStream {
     quote! {
         impl mysql_connector::model::Model for #ident {
             const PRIMARY: &'static str = #primary;
+            const AUTO_INCREMENT: bool = #auto_increment;
 
             type Primary = #primary_type;
 
-            fn primary(&self) -> mysql_connector::types::Value {
-                self.#primary_ident.into()
+            fn primary(&self) -> Self::Primary {
+                self.#primary_ident
             }
         }
     }

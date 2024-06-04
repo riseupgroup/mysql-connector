@@ -13,14 +13,11 @@ Simple MySQL connector for Rust that allows exchanging the underlying connection
 use std::sync::Arc;
 
 use mysql_connector::{
-    macros::{ActiveModel, FromQueryResult, Model, ModelData},
-    types::AuthPlugin,
-    Connection, ConnectionOptions, TcpStream,
+    macros::*, model::*, types::AuthPlugin, Connection, ConnectionOptions, TcpStream,
 };
 
-#[allow(dead_code)]
-#[derive(Debug, ModelData, FromQueryResult, ActiveModel, Model)]
-#[mysql_connector(table = "user", primary = "id")]
+#[derive(Debug, ModelData, FromQueryResult, ActiveModel, IntoQuery, Model)]
+#[mysql_connector(table = "user", primary = "id", auto_increment = "true")]
 pub struct User {
     id: u32,
     name: String,
@@ -52,16 +49,28 @@ async fn main() {
     .await
     .unwrap();
 
-    conn.execute_query(
-        "INSERT INTO `user` (`name`, `email`)
-        VALUES ('foo', 'foo@example.com'),
-        ('bar', NULL)",
-    )
+    User {
+        id: 0,
+        name: String::from("foo"),
+        email: Some(String::from("foo@example.com")),
+    }
+    .into_active_model()
+    .insert(&mut conn)
+    .await
+    .unwrap();
+
+    User {
+        id: 0,
+        name: String::from("bar"),
+        email: None,
+    }
+    .into_active_model()
+    .insert(&mut conn)
     .await
     .unwrap();
 
     let users: Vec<User> = conn
-        .query("SELECT * from `user`")
+        .query(&User::build_query())
         .await
         .unwrap()
         .collect()

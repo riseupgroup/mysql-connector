@@ -1,17 +1,17 @@
 use {
     super::{ActiveModel, Model, NamedValue},
-    crate::{error::Error, types::Value, Connection, Socket},
+    crate::{error::Error, Connection, Socket},
     std::ops::{Deref, DerefMut},
 };
 
 #[derive(Debug)]
 pub struct UpdateModel<T: Model> {
-    id: Value,
+    id: T::Primary,
     model: T::ActiveModel,
 }
 
 impl<T: Model> UpdateModel<T> {
-    pub fn new(id: Value) -> Self {
+    pub fn new(id: T::Primary) -> Self {
         Self {
             id,
             model: T::ActiveModel::default(),
@@ -19,10 +19,10 @@ impl<T: Model> UpdateModel<T> {
     }
 
     pub async fn update<S: Socket>(self, conn: &mut Connection<S>) -> Result<(), Error> {
-        let mut values = self.model.into_values()?;
+        let mut values = self.model.into_values(conn).await?;
         if !values.is_empty() {
             let stmt = NamedValue::into_update(&values, T::TABLE, T::PRIMARY)?;
-            values.push(NamedValue("", self.id));
+            values.push(NamedValue("", self.id.into()));
             let mut stmt = conn.prepare_statement(&stmt).await?;
             stmt.execute(&values).await.map(|_| ())
         } else {
