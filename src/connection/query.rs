@@ -1,7 +1,7 @@
 use {
     super::{
         types::{Column, TextProtocol},
-        Command, Connection, ParseBuf, ResultSet, Socket, BUFFER_POOL,
+        Command, Connection, ParseBuf, ResultSet, Stream, BUFFER_POOL,
     },
     crate::{
         model::FromQueryResult,
@@ -11,7 +11,7 @@ use {
     },
 };
 
-impl<T: Socket> Connection<T> {
+impl<T: Stream> Connection<T> {
     pub async fn query<R: FromQueryResult>(
         &mut self,
         query: &str,

@@ -212,22 +212,20 @@ pub fn derive_active_model(input: TokenStream) -> TokenStream {
 
     let primary = match attr_span {
         Some(span) => match attrs.get("primary") {
-            Some(primary) => {
-                match attrs.get("auto_increment") {
-                    Some(ai) => Some((format_ident!("{primary}"), ai == "true")),
-                    None => {
-                        error.add(
-                            span,
-                            "auto_increment needed (#[mysql_connector(auto_increment = \"...\")]",
-                        );
-                        None
-                    }
+            Some(primary) => match attrs.get("auto_increment") {
+                Some(ai) => Some((format_ident!("{primary}"), ai == "true")),
+                None => {
+                    error.add(
+                        span,
+                        "auto_increment needed (#[mysql_connector(auto_increment = \"...\")]",
+                    );
+                    None
                 }
-            }
+            },
             None => None,
         },
         None => None,
-};
+    };
 
     if let Some(error) = error.error() {
         return error.into_compile_error().into();
@@ -259,17 +257,24 @@ pub fn derive_active_model(input: TokenStream) -> TokenStream {
         .filter(TypeComplexity::simple_ref)
         .map(|x| &x.ident)
         .collect();
-    let (simple_field_names_without_primary, set_primary) = primary.as_ref().map(|(primary, auto_increment)| {
-        if *auto_increment {
-            let field_names = simple_field_names.iter().filter(|x| **x != primary).map(|x| *x).collect();
-            let set_primary = quote! {
-                #primary: mysql_connector::model::ActiveValue::Unset,
-            };
-            Some((field_names, set_primary))
-        } else {
-            None
-        }
-    }).flatten().unwrap_or_else(|| (simple_field_names.clone(), proc_macro2::TokenStream::new()));
+    let (simple_field_names_without_primary, set_primary) = primary
+        .as_ref()
+        .and_then(|(primary, auto_increment)| {
+            if *auto_increment {
+                let field_names = simple_field_names
+                    .iter()
+                    .filter(|x| **x != primary)
+                    .copied()
+                    .collect();
+                let set_primary = quote! {
+                    #primary: mysql_connector::model::ActiveValue::Unset,
+                };
+                Some((field_names, set_primary))
+            } else {
+                None
+            }
+        })
+        .unwrap_or_else(|| (simple_field_names.clone(), proc_macro2::TokenStream::new()));
     let get_primary = match primary {
         Some((primary, _)) => quote! {
             match self.#primary {
@@ -277,9 +282,9 @@ pub fn derive_active_model(input: TokenStream) -> TokenStream {
                 mysql_connector::model::ActiveValue::Unset => None,
             }
         },
-        None => quote!{None},
+        None => quote! {None},
     };
-    
+
     let simple_field_types: &Vec<&Type> = &fields
         .iter()
         .filter(TypeComplexity::simple_ref)
@@ -319,7 +324,7 @@ pub fn derive_active_model(input: TokenStream) -> TokenStream {
             }
 
             impl mysql_connector::model::ActiveModel<#ident> for #model_ident {
-                async fn into_values<S: mysql_connector::Socket>(self, conn: &mut mysql_connector::Connection<S>) -> Result<Vec<mysql_connector::model::NamedValue>, mysql_connector::error::Error> {
+                async fn into_values<S: mysql_connector::Stream>(self, conn: &mut mysql_connector::Connection<S>) -> Result<Vec<mysql_connector::model::NamedValue>, mysql_connector::error::Error> {
                     let mut values = Vec::new();
                     #(self.#simple_field_names.insert_named_value(&mut values, stringify!(#simple_field_names))?;)*
                     #insert_struct_fields

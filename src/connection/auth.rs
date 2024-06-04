@@ -1,5 +1,5 @@
 use {
-    super::{types::AuthPlugin, Connection, ParseBuf, Socket},
+    super::{types::AuthPlugin, Connection, ParseBuf, Stream},
     crate::{
         error::ProtocolError,
         packets::{AuthSwitchRequest, ErrPacket},
@@ -8,7 +8,7 @@ use {
     std::{future::Future, pin::Pin},
 };
 
-impl<T: Socket> Connection<T> {
+impl<T: Stream> Connection<T> {
     pub(super) fn continue_auth(
         &mut self,
     ) -> Pin<Box<dyn Future<Output = Result<(), Error>> + '_>> {

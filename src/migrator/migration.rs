@@ -1,9 +1,9 @@
 use {
-    crate::{error::Error, Connection, Socket},
+    crate::{error::Error, Connection, Stream},
     std::{cmp, fmt, future::Future, pin::Pin},
 };
 
-pub trait Migration<S: Socket> {
+pub trait Migration<S: Stream> {
     fn name(&self) -> &'static str;
     fn up<'a>(
         &self,
@@ -15,12 +15,12 @@ pub trait Migration<S: Socket> {
     ) -> Pin<Box<dyn Future<Output = Result<(), Error>> + 'a>>;
 }
 
-pub struct MigrationList<S: Socket + 'static> {
+pub struct MigrationList<S: Stream + 'static> {
     pub version: Version,
     pub migrations: &'static [&'static dyn Migration<S>],
 }
 
-impl<S: Socket + 'static> MigrationList<S> {
+impl<S: Stream + 'static> MigrationList<S> {
     pub fn ordered(list: &[Self]) -> bool {
         if list.len() <= 1 {
             return true;

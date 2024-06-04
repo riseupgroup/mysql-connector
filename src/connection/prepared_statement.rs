@@ -1,5 +1,5 @@
 use {
-    super::{types::BinaryProtocol, Command, Connection, ParseBuf, ResultSet, Socket},
+    super::{types::BinaryProtocol, Command, Connection, ParseBuf, ResultSet, Stream},
     crate::{
         error::{ProtocolError, RuntimeError},
         model::FromQueryResult,
@@ -10,13 +10,13 @@ use {
 };
 
 #[derive(Debug)]
-pub struct PreparedStatement<'a, T: Socket> {
+pub struct PreparedStatement<'a, T: Stream> {
     id: u32,
     conn: &'a mut Connection<T>,
     params: usize,
 }
 
-impl<'a, T: Socket> PreparedStatement<'a, T> {
+impl<'a, T: Stream> PreparedStatement<'a, T> {
     pub async fn query<V: SimpleValue, R: FromQueryResult>(
         &mut self,
         values: &[V],
@@ -41,7 +41,7 @@ impl<'a, T: Socket> PreparedStatement<'a, T> {
     }
 }
 
-impl<T: Socket> Connection<T> {
+impl<T: Stream> Connection<T> {
     pub async fn prepare_statement(&mut self, stmt: &str) -> Result<PreparedStatement<T>, Error> {
         self.execute_command(Command::StmtPrepare, stmt).await?;
         let packet = self.read_packet().await?;

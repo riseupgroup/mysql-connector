@@ -44,15 +44,15 @@ pub use {
     result_set::ResultSet,
 };
 
-pub struct Connection<T: Socket> {
-    socket: T,
+pub struct Connection<T: Stream> {
+    stream: T,
     seq_id: u8,
     data: ConnectionData,
     options: Arc<ConnectionOptions>,
     pending_result: bool,
 }
 
-impl<T: Socket> Connection<T> {
+impl<T: Stream> Connection<T> {
     pub fn data(&self) -> &ConnectionData {
         &self.data
     }
@@ -62,7 +62,7 @@ impl<T: Socket> Connection<T> {
     }
 }
 
-impl<T: Socket> fmt::Debug for Connection<T> {
+impl<T: Stream> fmt::Debug for Connection<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Connection")
             .field("seq_id", &self.seq_id)
@@ -73,12 +73,12 @@ impl<T: Socket> fmt::Debug for Connection<T> {
 }
 
 #[allow(async_fn_in_trait)]
-pub trait Socket: Sized + AsyncRead + AsyncWrite + Unpin + fmt::Debug {
+pub trait Stream: Sized + AsyncRead + AsyncWrite + Unpin + fmt::Debug {
     async fn connect(host: &str, port: u16, nodelay: bool) -> Result<Self, std::io::Error>;
 }
 
 #[cfg(feature = "tcpstream")]
-impl Socket for tokio::net::TcpStream {
+impl Stream for tokio::net::TcpStream {
     async fn connect(host: &str, port: u16, nodelay: bool) -> Result<Self, std::io::Error> {
         let this = Self::connect((host, port)).await?;
         this.set_nodelay(nodelay)?;

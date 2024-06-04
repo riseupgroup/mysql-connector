@@ -1,7 +1,7 @@
 use {
     super::{
         types::AuthPlugin, Command, Connection, ConnectionData, ConnectionOptions, ParseBuf,
-        Socket, BUFFER_POOL, DEFAULT_MAX_ALLOWED_PACKET, DEFAULT_WAIT_TIMEOUT,
+        Stream, BUFFER_POOL, DEFAULT_MAX_ALLOWED_PACKET, DEFAULT_WAIT_TIMEOUT,
     },
     crate::{
         packets::{HandshakePacket, HandshakeResponse},
@@ -10,14 +10,14 @@ use {
     std::sync::Arc,
 };
 
-impl<T: Socket> Connection<T> {
+impl<T: Stream> Connection<T> {
     pub async fn connect(options: Arc<ConnectionOptions>) -> Result<Self, Error> {
-        let mut socket = T::connect(&options.host, options.port, options.nodelay).await?;
+        let mut stream = T::connect(&options.host, options.port, options.nodelay).await?;
         let mut seq_id = 0;
 
-        let data = Self::handle_handshake(&mut socket, &mut seq_id, options.clone()).await?;
+        let data = Self::handle_handshake(&mut stream, &mut seq_id, options.clone()).await?;
         let mut this = Self {
-            socket,
+            stream,
             seq_id,
             data,
             options,
@@ -34,12 +34,12 @@ impl<T: Socket> Connection<T> {
     }
 
     async fn handle_handshake(
-        socket: &mut T,
+        stream: &mut T,
         seq_id: &mut u8,
         options: Arc<ConnectionOptions>,
     ) -> Result<ConnectionData, Error> {
         let mut packet = BUFFER_POOL.get();
-        Self::read_packet_to_buf(socket, seq_id, packet.as_mut()).await?;
+        Self::read_packet_to_buf(stream, seq_id, packet.as_mut()).await?;
         let handshake = ParseBuf(&packet).parse::<HandshakePacket>(()).unwrap();
 
         let (version, is_mariadb) = handshake

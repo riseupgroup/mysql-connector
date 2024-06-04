@@ -9,7 +9,9 @@ mod test;
 use crate::types::Value;
 
 pub use {
-    active_model::{ActiveModel, ActiveValue, ActiveReference, HasActiveModel, NamedValue, UpdateModel},
+    active_model::{
+        ActiveModel, ActiveReference, ActiveValue, HasActiveModel, NamedValue, UpdateModel,
+    },
     from_query_result::{FromQueryResult, FromQueryResultMapping},
     into_query::{IntoQuery, QueryColumn, QueryColumnReference},
 };

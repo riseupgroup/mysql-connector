@@ -12,7 +12,7 @@ struct Vector3 {
 
 #[allow(dead_code)]
 #[derive(Debug, ModelData, FromQueryResult, ActiveModel, IntoQuery, Model)]
-#[mysql_connector(table="entity", primary="id", auto_increment="true", ty=Vector3{x,y,z})]
+#[mysql_connector(table = "entity", primary = "id", auto_increment = "true", ty = Vector3{x,y,z})]
 struct Entity {
     id: u32,
     name: String,
@@ -25,7 +25,7 @@ struct Entity {
 
 #[allow(dead_code)]
 #[derive(Debug, ModelData, FromQueryResult, ActiveModel, IntoQuery, Model)]
-#[mysql_connector(table="map", primary="id", auto_increment="true")]
+#[mysql_connector(table = "map", primary = "id", auto_increment = "true")]
 struct Map {
     id: u32,
     name: String,

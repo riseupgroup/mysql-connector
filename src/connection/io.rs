@@ -1,7 +1,7 @@
 use {
     super::{
         packets::{ErrPacket, OkPacket},
-        Connection, ParseBuf, Serialize, Socket, BUFFER_POOL, MAX_PAYLOAD_LEN,
+        Connection, ParseBuf, Serialize, Stream, BUFFER_POOL, MAX_PAYLOAD_LEN,
     },
     crate::{
         error::ProtocolError,
@@ -15,7 +15,7 @@ use {
     tokio::io::{AsyncReadExt, AsyncWriteExt},
 };
 
-impl<T: Socket> Connection<T> {
+impl<T: Stream> Connection<T> {
     pub(super) async fn send_long_data<'a, V, I>(
         &mut self,
         statement_id: u32,
@@ -42,9 +42,9 @@ impl<T: Socket> Connection<T> {
         Ok(())
     }
 
-    async fn read_chunk_to_buf(socket: &mut T, dst: &mut Vec<u8>) -> Result<(u8, bool), Error> {
+    async fn read_chunk_to_buf(stream: &mut T, dst: &mut Vec<u8>) -> Result<(u8, bool), Error> {
         let mut metadata_buf = [0u8; 4];
-        socket.read_exact(&mut metadata_buf).await?;
+        stream.read_exact(&mut metadata_buf).await?;
         let chunk_len = read_u32(&metadata_buf[..3]) as usize;
         let seq_id = metadata_buf[3];
 
@@ -54,7 +54,7 @@ impl<T: Socket> Connection<T> {
 
         let start = dst.len();
         dst.resize(start + chunk_len, 0);
-        socket.read_exact(&mut dst[start..]).await?;
+        stream.read_exact(&mut dst[start..]).await?;
 
         if dst.len() % MAX_PAYLOAD_LEN == 0 {
             Ok((seq_id, false))
@@ -64,12 +64,12 @@ impl<T: Socket> Connection<T> {
     }
 
     pub(super) async fn read_packet_to_buf(
-        socket: &mut T,
+        stream: &mut T,
         seq_id: &mut u8,
         dst: &mut Vec<u8>,
     ) -> Result<(), Error> {
         loop {
-            let (read_seq_id, last_chunk) = Self::read_chunk_to_buf(socket, dst).await?;
+            let (read_seq_id, last_chunk) = Self::read_chunk_to_buf(stream, dst).await?;
             if *seq_id != read_seq_id {
                 return Err(Error::Protocol(ProtocolError::OutOfSync));
             }
@@ -85,7 +85,7 @@ impl<T: Socket> Connection<T> {
     pub(super) async fn read_packet<'b>(&mut self) -> Result<PoolItem<'b, Vec<u8>>, Error> {
         let mut decode_buf = BUFFER_POOL.get();
         Self::read_packet_to_buf(
-            &mut self.socket,
+            &mut self.stream,
             &mut self.seq_id,
             decode_buf.as_mut(),
         )
@@ -98,16 +98,16 @@ impl<T: Socket> Connection<T> {
 
         while bytes.has_remaining() {
             let chunk_len = usize::min(bytes.remaining(), MAX_PAYLOAD_LEN);
-            self.socket
+            self.stream
                 .write_u32_le(chunk_len as u32 | (u32::from(self.seq_id) << 24))
                 .await?;
-            self.socket.write_all(&bytes[..chunk_len]).await?;
+            self.stream.write_all(&bytes[..chunk_len]).await?;
             bytes = &bytes[chunk_len..];
             self.seq_id = self.seq_id.wrapping_add(1);
         }
 
         if extra_packet {
-            self.socket
+            self.stream
                 .write_u32_le(u32::from(self.seq_id) << 24)
                 .await?;
             self.seq_id = self.seq_id.wrapping_add(1);

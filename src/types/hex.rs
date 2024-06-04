@@ -73,7 +73,8 @@ impl<'de> serde::Deserialize<'de> for Hex {
         D: serde::Deserializer<'de>,
     {
         let hex = <&str as serde::Deserialize>::deserialize(deserializer)?;
-        <Hex as std::str::FromStr>::from_str(hex).map_err(|err| <D::Error as serde::de::Error>::custom(err))
+        <Hex as std::str::FromStr>::from_str(hex)
+            .map_err(|err| <D::Error as serde::de::Error>::custom(err))
     }
 }
 

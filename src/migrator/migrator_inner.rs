@@ -1,16 +1,16 @@
 use {
     super::{MigrationList, Version},
-    crate::{error::Error, migrator::model::MigrationModel, types::Value, Connection, Socket},
+    crate::{error::Error, migrator::model::MigrationModel, types::Value, Connection, Stream},
     std::collections::HashMap,
 };
 
-pub struct Migrator<'a, S: Socket + 'static> {
+pub struct Migrator<'a, S: Stream + 'static> {
     conn: &'a mut Connection<S>,
     migrations: &'a [MigrationList<S>],
     applied: HashMap<Version, Vec<String>>,
 }
 
-impl<'a, S: Socket + 'static> Migrator<'a, S> {
+impl<'a, S: Stream + 'static> Migrator<'a, S> {
     pub async fn new(
         conn: &'a mut Connection<S>,
         migrations: &'a [MigrationList<S>],

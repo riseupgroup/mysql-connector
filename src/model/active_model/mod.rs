@@ -1,22 +1,28 @@
-mod active_value;
 mod active_reference;
+mod active_value;
 mod named_value;
 mod update_model;
 
 use {
     super::Model,
-    crate::{error::Error, types::Value, Connection, Socket},
+    crate::{error::Error, types::Value, Connection, Stream},
 };
 
-pub use {active_value::ActiveValue, active_reference::ActiveReference, named_value::NamedValue, update_model::UpdateModel};
+pub use {
+    active_reference::ActiveReference, active_value::ActiveValue, named_value::NamedValue,
+    update_model::UpdateModel,
+};
 
 #[allow(async_fn_in_trait)]
 pub trait ActiveModel<ModelData: super::ModelData>: Default {
-    async fn into_values<S: Socket>(self, conn: &mut Connection<S>) -> Result<Vec<NamedValue>, Error>;
+    async fn into_values<S: Stream>(
+        self,
+        conn: &mut Connection<S>,
+    ) -> Result<Vec<NamedValue>, Error>;
 
     fn primary(&self) -> Option<Value>;
 
-    async fn insert<S: Socket>(self, conn: &mut Connection<S>) -> Result<u64, Error>
+    async fn insert<S: Stream>(self, conn: &mut Connection<S>) -> Result<u64, Error>
     where
         Self: Sized,
     {
@@ -31,7 +37,7 @@ pub trait HasActiveModel: super::ModelData {
     type ActiveModel: ActiveModel<Self>;
 
     /// Create [`ActiveModel`] containing the model's data.
-    /// 
+    ///
     /// If the model has a primary key that is auto increment, it has to be set to [`ActiveValue::Unset`]
     fn into_active_model(self) -> Self::ActiveModel;
 }

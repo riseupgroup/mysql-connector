@@ -4,12 +4,12 @@ Simple MySQL connector for Rust that allows exchanging the underlying connection
 
 ## Features
 
-* `tcpstream` (enabled by default): implements the `Socket` trait for tokio's `TcpStream`.
+* `tcpstream` (enabled by default): implements the `Stream` trait for tokio's `TcpStream`.
 * `serde`: implements `serde::Serialize` and `serde::Deserialize` for some types.
 
 ## Example
 
-```rust
+```no_run
 use std::sync::Arc;
 
 use mysql_connector::{

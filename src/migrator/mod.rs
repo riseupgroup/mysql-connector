@@ -12,7 +12,7 @@ macro_rules! simple_migration {
     ($name:ident, $up:literal, $down:literal) => {
         struct $name;
 
-        impl<S: mysql_connector::Socket> mysql_connector::migrator::Migration<S> for $name {
+        impl<S: mysql_connector::Stream> mysql_connector::migrator::Migration<S> for $name {
             fn name(&self) -> &'static str {
                 stringify!($name)
             }

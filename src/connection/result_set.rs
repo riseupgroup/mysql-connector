@@ -1,7 +1,7 @@
 use {
     super::{
         types::{Column, Protocol},
-        Connection, Socket, MAX_PAYLOAD_LEN,
+        Connection, Stream, MAX_PAYLOAD_LEN,
     },
     crate::{
         bitflags::CapabilityFlags,
@@ -14,7 +14,7 @@ use {
 
 pub struct ResultSet<'a, T, P, R>
 where
-    T: Socket,
+    T: Stream,
     P: Protocol,
     R: FromQueryResult,
 {
@@ -27,7 +27,7 @@ where
 
 impl<'a, T, P, R> ResultSet<'a, T, P, R>
 where
-    T: Socket,
+    T: Stream,
     P: Protocol,
     R: FromQueryResult,
 {
@@ -147,7 +147,7 @@ where
     }
 }
 
-impl<T: Socket> Connection<T> {
+impl<T: Stream> Connection<T> {
     pub async fn cleanup(&mut self) -> Result<Option<OkPacket>, Error> {
         if self.pending_result {
             loop {

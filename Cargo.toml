@@ -33,3 +33,7 @@ sha1 = "0.10.6"
 tokio = { version = "1.38.0", features = ["sync", "io-util"] }
 serde = { version = "1.0.203", optional = true }
 hex = "0.4.3"
+
+[dev-dependencies]
+dotenv = "0.15.0"
+tokio = { version = "1.38.0", features = ["sync", "io-util", "macros", "rt-multi-thread"] }
