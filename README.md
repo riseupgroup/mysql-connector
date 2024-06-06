@@ -31,7 +31,7 @@ async fn main() {
         user: "user".into(),
         password: std::env::var("PASSWORD").unwrap(),
         db_name: Some("db".into()),
-        host: "localhost".into(),
+        host: Some("localhost".into()),
         secure_auth: false,
         auth_plugin: Some(AuthPlugin::Native),
         ..Default::default()

@@ -49,39 +49,20 @@ impl<T: Stream> Connection<T> {
     }
 
     pub(super) async fn read_settings(&mut self) -> Result<(), Error> {
-        if self.options.max_allowed_packet.is_none() || self.options.wait_timeout.is_none() {
-            let mut query = String::from("select ");
-            if self.options.max_allowed_packet.is_none() {
-                query += "@@max_allowed_packet";
-            }
-
-            if self.options.wait_timeout.is_none() {
-                if self.options.max_allowed_packet.is_none() {
-                    query += ", ";
-                }
-                query += "@@wait_timeout";
-            }
-
-            let mut res = self.query::<Vec<Value>>(&query).await?;
+        if self.options.max_allowed_packet.is_none() {
+            let mut res = self
+                .query::<Vec<Value>>("select @@max_allowed_packet")
+                .await?;
             let row = res.next().await?;
             let columns = res.into_columns();
 
             if let Some(mut row) = row {
-                if self.options.max_allowed_packet.is_none() {
-                    if let Some(i) = columns
-                        .iter()
-                        .position(|x| x.name() == "@@max_allowed_packet")
-                    {
-                        self.data.max_allowed_packet =
-                            <Value as TryInto<u64>>::try_into(row[i].take())? as usize;
-                    }
-                }
-
-                if self.options.wait_timeout.is_none() {
-                    if let Some(i) = columns.iter().position(|x| x.name() == "@@wait_timeout") {
-                        self.data.wait_timeout =
-                            <Value as TryInto<u64>>::try_into(row[i].take())? as usize;
-                    }
+                if let Some(i) = columns
+                    .iter()
+                    .position(|x| x.name() == "@@max_allowed_packet")
+                {
+                    self.data.max_allowed_packet =
+                        <Value as TryInto<u64>>::try_into(row[i].take())? as usize;
                 }
             }
         }

@@ -11,11 +11,11 @@ mod prepared_statement;
 mod query;
 mod result_set;
 mod serialization;
+pub mod timeout;
 pub mod types;
 
 const MAX_PAYLOAD_LEN: usize = 16_777_215;
 const DEFAULT_MAX_ALLOWED_PACKET: usize = 4 * 1024 * 1024;
-const DEFAULT_WAIT_TIMEOUT: usize = 28800;
 
 const UTF8_GENERAL_CI: u16 = 33;
 const UTF8MB4_GENERAL_CI: u16 = 45;
@@ -33,15 +33,18 @@ use {
     tokio::io::{AsyncRead, AsyncWrite},
 };
 
-pub(super) use {
+pub(crate) use {
     command::Command,
     parse_buf::ParseBuf,
     serialization::{Deserialize, Serialize},
 };
 
 pub use {
-    data::ConnectionData, options::ConnectionOptions, prepared_statement::PreparedStatement,
+    data::ConnectionData,
+    options::ConnectionOptions,
+    prepared_statement::PreparedStatement,
     result_set::ResultSet,
+    timeout::{Timeout, TimeoutFuture},
 };
 
 pub struct Connection<T: Stream> {

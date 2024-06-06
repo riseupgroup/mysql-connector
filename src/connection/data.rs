@@ -1,6 +1,9 @@
-use {super::types::AuthPlugin, crate::bitflags::CapabilityFlags};
+use {
+    super::types::AuthPlugin,
+    crate::{bitflags::CapabilityFlags, TimeoutFuture},
+    std::fmt,
+};
 
-#[derive(Debug)]
 pub struct ConnectionData {
     pub(super) id: u32,
     pub(super) is_mariadb: bool,
@@ -10,7 +13,7 @@ pub struct ConnectionData {
     pub(super) auth_plugin: AuthPlugin,
     pub(super) auth_switched: bool,
     pub(super) max_allowed_packet: usize,
-    pub(super) wait_timeout: usize,
+    pub(super) sleep: &'static dyn Fn(std::time::Duration) -> TimeoutFuture,
 }
 
 impl ConnectionData {
@@ -37,8 +40,19 @@ impl ConnectionData {
     pub fn max_allowed_packet(&self) -> usize {
         self.max_allowed_packet
     }
+}
 
-    pub fn wait_timeout(&self) -> usize {
-        self.wait_timeout
+impl fmt::Debug for ConnectionData {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ConnectionData")
+            .field("id", &self.id)
+            .field("is_mariadb", &self.is_mariadb)
+            .field("version", &self.version)
+            .field("capabilities", &self.capabilities)
+            .field("nonce", &self.nonce)
+            .field("auth_plugin", &self.auth_plugin)
+            .field("auth_switched", &self.auth_switched)
+            .field("max_allowed_packet", &self.max_allowed_packet)
+            .finish()
     }
 }

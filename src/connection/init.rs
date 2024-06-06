@@ -1,7 +1,7 @@
 use {
     super::{
         types::AuthPlugin, Command, Connection, ConnectionData, ConnectionOptions, ParseBuf,
-        Stream, BUFFER_POOL, DEFAULT_MAX_ALLOWED_PACKET, DEFAULT_WAIT_TIMEOUT,
+        Stream, BUFFER_POOL, DEFAULT_MAX_ALLOWED_PACKET,
     },
     crate::{
         packets::{HandshakePacket, HandshakeResponse},
@@ -12,7 +12,12 @@ use {
 
 impl<T: Stream> Connection<T> {
     pub async fn connect(options: Arc<ConnectionOptions>) -> Result<Self, Error> {
-        let mut stream = T::connect(&options.host, options.port, options.nodelay).await?;
+        let mut stream = T::connect(
+            options.host.as_deref().unwrap_or("localhost"),
+            options.port,
+            options.nodelay,
+        )
+        .await?;
         let mut seq_id = 0;
 
         let data = Self::handle_handshake(&mut stream, &mut seq_id, options.clone()).await?;
@@ -38,8 +43,20 @@ impl<T: Stream> Connection<T> {
         seq_id: &mut u8,
         options: Arc<ConnectionOptions>,
     ) -> Result<ConnectionData, Error> {
+        #[cfg(feature = "time")]
+        fn sleep(duration: std::time::Duration) -> crate::TimeoutFuture {
+            Box::pin(tokio::time::sleep(duration))
+        }
+        #[cfg(not(feature = "time"))]
+        let sleep = match options.sleep {
+            Some(x) => x,
+            None => panic!(concat!(
+                "No `sleep` function provided.\n",
+                "You have to either provide a custom `sleep` function by setting `ConnectionData::sleep` or enable the feature `time`.",
+            )),
+        };
         let mut packet = BUFFER_POOL.get();
-        Self::read_packet_to_buf(stream, seq_id, packet.as_mut()).await?;
+        Self::read_packet_to_buf(stream, seq_id, packet.as_mut(), &sleep, options.timeout).await?;
         let handshake = ParseBuf(&packet).parse::<HandshakePacket>(()).unwrap();
 
         let (version, is_mariadb) = handshake
@@ -58,7 +75,10 @@ impl<T: Stream> Connection<T> {
             max_allowed_packet: options
                 .max_allowed_packet
                 .unwrap_or(DEFAULT_MAX_ALLOWED_PACKET),
-            wait_timeout: options.wait_timeout.unwrap_or(DEFAULT_WAIT_TIMEOUT),
+            #[cfg(feature = "time")]
+            sleep: &sleep,
+            #[cfg(not(feature = "time"))]
+            sleep,
         })
     }
 

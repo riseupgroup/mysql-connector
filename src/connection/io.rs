@@ -9,9 +9,10 @@ use {
         pool::PoolItem,
         types::{SimpleValue, Value},
         utils::read_u32,
-        Deserialize, Error,
+        Deserialize, Error, Timeout, TimeoutFuture,
     },
     bytes::Buf,
+    std::time::Duration,
     tokio::io::{AsyncReadExt, AsyncWriteExt},
 };
 
@@ -42,9 +43,14 @@ impl<T: Stream> Connection<T> {
         Ok(())
     }
 
-    async fn read_chunk_to_buf(stream: &mut T, dst: &mut Vec<u8>) -> Result<(u8, bool), Error> {
+    async fn read_chunk_to_buf(
+        stream: &mut T,
+        dst: &mut Vec<u8>,
+        sleep: &dyn Fn(std::time::Duration) -> TimeoutFuture,
+        timeout: Duration,
+    ) -> Result<(u8, bool), Error> {
         let mut metadata_buf = [0u8; 4];
-        stream.read_exact(&mut metadata_buf).await?;
+        Timeout::new(stream.read_exact(&mut metadata_buf), sleep, timeout).await??;
         let chunk_len = read_u32(&metadata_buf[..3]) as usize;
         let seq_id = metadata_buf[3];
 
@@ -54,7 +60,7 @@ impl<T: Stream> Connection<T> {
 
         let start = dst.len();
         dst.resize(start + chunk_len, 0);
-        stream.read_exact(&mut dst[start..]).await?;
+        Timeout::new(stream.read_exact(&mut dst[start..]), sleep, timeout).await??;
 
         if dst.len() % MAX_PAYLOAD_LEN == 0 {
             Ok((seq_id, false))
@@ -67,9 +73,12 @@ impl<T: Stream> Connection<T> {
         stream: &mut T,
         seq_id: &mut u8,
         dst: &mut Vec<u8>,
+        sleep: &dyn Fn(std::time::Duration) -> TimeoutFuture,
+        timeout: Duration,
     ) -> Result<(), Error> {
         loop {
-            let (read_seq_id, last_chunk) = Self::read_chunk_to_buf(stream, dst).await?;
+            let (read_seq_id, last_chunk) =
+                Self::read_chunk_to_buf(stream, dst, sleep, timeout).await?;
             if *seq_id != read_seq_id {
                 return Err(Error::Protocol(ProtocolError::OutOfSync));
             }
@@ -88,6 +97,8 @@ impl<T: Stream> Connection<T> {
             &mut self.stream,
             &mut self.seq_id,
             decode_buf.as_mut(),
+            self.data.sleep,
+            self.options.timeout,
         )
         .await?;
         Ok(decode_buf)
@@ -98,18 +109,30 @@ impl<T: Stream> Connection<T> {
 
         while bytes.has_remaining() {
             let chunk_len = usize::min(bytes.remaining(), MAX_PAYLOAD_LEN);
-            self.stream
-                .write_u32_le(chunk_len as u32 | (u32::from(self.seq_id) << 24))
-                .await?;
-            self.stream.write_all(&bytes[..chunk_len]).await?;
+            Timeout::new(
+                self.stream
+                    .write_u32_le(chunk_len as u32 | (u32::from(self.seq_id) << 24)),
+                self.data.sleep,
+                self.options.timeout,
+            )
+            .await??;
+            Timeout::new(
+                self.stream.write_all(&bytes[..chunk_len]),
+                self.data.sleep,
+                self.options.timeout,
+            )
+            .await??;
             bytes = &bytes[chunk_len..];
             self.seq_id = self.seq_id.wrapping_add(1);
         }
 
         if extra_packet {
-            self.stream
-                .write_u32_le(u32::from(self.seq_id) << 24)
-                .await?;
+            Timeout::new(
+                self.stream.write_u32_le(u32::from(self.seq_id) << 24),
+                self.data.sleep,
+                self.options.timeout,
+            )
+            .await??;
             self.seq_id = self.seq_id.wrapping_add(1);
         }
         Ok(())

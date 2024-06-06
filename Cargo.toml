@@ -16,8 +16,9 @@ categories = ["database"]
 all-features = true
 
 [features]
-default = ["tcpstream"]
+default = ["tcpstream", "time"]
 tcpstream = ["tokio/net"]
+time = ["tokio/time"]
 serde = ["dep:serde"]
 
 [dependencies]
