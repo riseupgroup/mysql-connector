@@ -1,0 +1,23 @@
+name: Rust
+on: [pull_request]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: check --no-default-features
+      run: cargo check --workspace --no-default-features
+    - name: check --all-features
+      run: cargo check --workspace --all-features
+    - name: test --lib --no-default-features
+      run: cargo test --workspace --lib --no-default-features
+    - name: test --all-features
+      run: cargo test --workspace --all-features
+    - name: clippy
+      run: cargo clippy --workspace --all-features -- --deny warnings
+    - name: rustfmt
+      run: cargo fmt --all --check

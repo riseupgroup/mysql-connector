@@ -24,7 +24,7 @@ pub fn parse_fields(
 ) -> Vec<NamedField> {
     let mut fields: Vec<NamedField> = Vec::new();
     match data {
-        Data::Enum(_) => error.add(span, "mysql_connector dows not support derive for enums"),
+        Data::Enum(_) => error.add(span, "mysql_connector does not support derive for enums"),
         Data::Struct(data) => match &data.fields {
             syn::Fields::Named(fields_named) => {
                 for field in &fields_named.named {
@@ -46,14 +46,14 @@ pub fn parse_fields(
             }
             syn::Fields::Unnamed(_) => error.add(
                 span,
-                "mysql_connector dows not support derive for unnamed fields",
+                "mysql_connector does not support derive for unnamed fields",
             ),
             syn::Fields::Unit => error.add(
                 span,
-                "mysql_connector dows not support derive for unit fields",
+                "mysql_connector does not support derive for unit fields",
             ),
         },
-        Data::Union(_) => error.add(span, "mysql_connector dows not support derive for unions"),
+        Data::Union(_) => error.add(span, "mysql_connector does not support derive for unions"),
     }
     fields
 }

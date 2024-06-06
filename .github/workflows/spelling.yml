@@ -1,0 +1,14 @@
+name: Check spelling
+on: [pull_request]
+
+jobs:
+  typos:
+    # https://github.com/crate-ci/typos
+    # Add exceptions to .typos.toml
+    # install and run locally: cargo install typos-cli && typos
+    name: typos
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check spelling
+        uses: crate-ci/typos@master
