@@ -4,8 +4,9 @@ Simple MySQL connector for Rust that allows exchanging the underlying connection
 
 ## Features
 
-* `tcpstream` (enabled by default): implements the `Stream` trait for tokio's `TcpStream`.
-* `serde`: implements `serde::Serialize` and `serde::Deserialize` for some types.
+* `tcpstream` (enabled by default): implements the [`Stream`] trait for tokio's [`tokio::net::TcpStream`].
+* `time` (enabled by default): uses [`tokio::time::sleep`] for network timeout.
+* `serde`: implements [`serde::Serialize`] and [`serde::Deserialize`] for some types.
 
 ## Example
 
