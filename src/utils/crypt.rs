@@ -1,3 +1,142 @@
+use {
+    num::BigUint, rand::{CryptoRng, Rng, SeedableRng}, sha1::{Digest, Sha1}
+};
+
+#[derive(Debug)]
+pub enum Error {
+    InvalidPem,
+    MessageTooLong,
+}
+
+mod der {
+    use {num::BigUint, base64::{engine::general_purpose::STANDARD, Engine as _}, super::{Error, PublicKey}};
+
+    fn eat_len(der: &mut &[u8]) -> usize {
+        if der[0] & 0x80 == 0x80 {
+            let len = (der[0] & (!0x80)) as usize;
+            let mut bytes = [0u8; 8];
+            bytes[8-len..].copy_from_slice(&der[1..=len]);
+            *der = &der[len + 1..];
+            usize::from_be_bytes(bytes)
+        } else {
+            let len = der[0] as usize;
+            *der = &der[1..];
+            len
+        }
+    }
+
+    fn eat_uint(der: &mut &[u8]) -> Result<BigUint, Error> {
+        if der[0] != 0x02 {
+            return Err(Error::InvalidPem);
+        }
+        *der = &der[1..];
+        let len = eat_len(der);
+        let uint = BigUint::from_bytes_be(&der[..len]);
+        *der = &der[len..];
+        Ok(uint)
+    }
+
+    fn eat_sequence<'a>(der: &mut &'a[u8]) -> Result<&'a[u8], Error> {
+        if der[0] != 0x30 {
+            return Err(Error::InvalidPem);
+        }
+        *der = &der[1..];
+        let len = eat_len(der);
+        let sequence = &der[..len];
+        *der = &der[len..];
+        Ok(sequence)
+    }
+
+    fn eat_bit_string<'a>(der: &mut &'a[u8]) -> Result<(u8, &'a[u8]), Error> {
+        if der[0] != 0x03 {
+            return Err(Error::InvalidPem);
+        }
+        *der = &der[1..];
+        let len = eat_len(der);
+        let unused_bits = der[0];
+        let bit_string = &der[1..len];
+        *der = &der[len..];
+        Ok((unused_bits, bit_string))
+    }
+
+    impl PublicKey {
+        pub fn try_from_pkcs1(mut der: &[u8]) -> Result<Self, Error> {
+            let mut pub_key = eat_sequence(&mut der)?;
+            let modulus = eat_uint(&mut pub_key)?;
+            let exponent = eat_uint(&mut pub_key)?;
+            Ok(Self { modulus, exponent })
+        }
+        
+        pub fn try_from_pkcs8(mut der: &[u8]) -> Result<Self, Error> {
+            let mut seq_data = eat_sequence(&mut der)?;
+            eat_sequence(&mut seq_data)?;
+            let (unused_bits, pub_key) = eat_bit_string(&mut seq_data)?;
+            if unused_bits != 0 {
+                return Err(Error::InvalidPem);
+            }
+            Self::try_from_pkcs1(pub_key)
+        }
+    
+        pub fn try_from_pem(pem: &[u8]) -> Result<Self, Error>{
+            const PKCS1: (&[u8], &[u8]) = (b"-----BEGINRSAPUBLICKEY-----", b"-----ENDRSAPUBLICKEY-----");
+            const PKCS8: (&[u8], &[u8]) = (b"-----BEGINPUBLICKEY-----", b"-----ENDPUBLICKEY-----");
+
+            let pem: Vec<u8> = pem.iter().filter(|x| !b" \n\t\r\x0b\x0c".contains(x)).cloned().collect();
+        
+            let (body, is_pkcs_1) = if pem.starts_with(PKCS1.0) && pem.ends_with(PKCS1.1) {
+                (&pem[PKCS1.0.len()..pem.len()-PKCS1.1.len()], true)
+            } else if pem.starts_with(PKCS8.0) && pem.ends_with(PKCS8.1) {
+                (&pem[PKCS8.0.len()..pem.len()-PKCS8.1.len()], false)
+            } else {
+                return Err(Error::InvalidPem);
+            };
+        
+            let body = STANDARD.decode(body).map_err(|_| Error::InvalidPem)?;
+            match is_pkcs_1 {
+                true => Self::try_from_pkcs1(&body),
+                false => Self::try_from_pkcs8(&body),
+            }
+        }
+    }
+}
+
+pub struct PublicKey {
+    modulus: BigUint,
+    exponent: BigUint,
+}
+
+impl PublicKey {
+    pub const fn new(modulus: BigUint, exponent: BigUint) -> Self {
+        Self { modulus, exponent }
+    }
+
+    pub fn num_octets(&self) -> usize {
+        (self.modulus().bits() as usize + 6) >> 3
+    }
+
+    pub fn modulus(&self) -> &BigUint {
+        &self.modulus
+    }
+
+    pub fn exponent(&self) -> &BigUint {
+        &self.exponent
+    }
+
+    pub fn encrypt_padded<R: Rng + CryptoRng>(&self, data: &[u8], mut padding: OaepPadding<R>) -> Result<Vec<u8>, Error> {
+        let octets = self.num_octets();
+        let padded = BigUint::from_bytes_be(&padding.pad(data, octets)?);
+        let mut encrypted = padded.modpow(self.exponent(), self.modulus()).to_bytes_be();
+
+        let fill = octets - encrypted.len();
+        if fill > 0 {
+            let mut encrypted_new = vec![0u8; octets];
+            encrypted_new[fill..].copy_from_slice(&encrypted);
+            encrypted = encrypted_new;
+        }
+        Ok(encrypted)
+    }
+}
+
 pub struct OaepPadding<R: Rng + CryptoRng> {
     rng: R,
 }
@@ -9,9 +148,9 @@ impl<R: Rng + CryptoRng> OaepPadding<R> {
         Self { rng }
     }
 
-    fn mgf1(seed: &[u8], len: usize) -> Result<Vec<u8>, ()> {
+    fn mgf1(seed: &[u8], len: usize) -> Result<Vec<u8>, Error> {
         if len > Self::HASH_LEN << 32 {
-            return Err(());
+            return Err(Error::MessageTooLong);
         }
 
         let mut output = vec![0u8; len];
@@ -50,10 +189,10 @@ impl<R: Rng + CryptoRng> OaepPadding<R> {
     ///                      ┃              ┃
     /// padded = 0x00 || masked seed || masked msg
     /// ```
-    pub fn pad(&mut self, data: &[u8], n: usize) -> Result<Vec<u8>, ()> {
+    pub fn pad(&mut self, data: &[u8], n: usize) -> Result<Vec<u8>, Error> {
         let seed_len = Self::HASH_LEN;
         if n < 1 + seed_len + Self::HASH_LEN + 2 + 1 + data.len() {
-            return Err(());
+            return Err(Error::MessageTooLong);
         }
 
         let msg_len = n - seed_len - 1;

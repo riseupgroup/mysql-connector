@@ -1,5 +1,6 @@
 mod buf_mut_ext;
 mod scramble;
+pub(crate) mod crypt;
 
 pub(crate) use {buf_mut_ext::BufMutExt, scramble::*};
 

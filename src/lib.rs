@@ -8,7 +8,7 @@ pub mod pool;
 pub mod types;
 mod utils;
 
-pub use {connection::*, error::Error, mysql_connector_macros as macros};
+pub use {connection::*, error::Error, mysql_connector_macros as macros, utils::crypt::PublicKey};
 
 #[cfg(feature = "tcpstream")]
 pub use tokio::net::TcpStream;
