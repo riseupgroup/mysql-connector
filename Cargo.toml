@@ -32,9 +32,12 @@ crossbeam = "0.8.4"
 lazy_static = "1.4.0"
 paste = "1.0.15"
 sha1 = "0.10.6"
+sha2 = "0.10.6"
 tokio = { version = "1.38.0", features = ["sync", "io-util"] }
 serde = { version = "1.0.203", optional = true }
 hex = "0.4.3"
+num = "0.4.3"
+rand = "0.8.5"
 
 [dev-dependencies]
 dotenv = "0.15.0"
