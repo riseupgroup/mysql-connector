@@ -11,17 +11,21 @@ pub enum Error {
 mod der {
     use {num::BigUint, base64::{engine::general_purpose::STANDARD, Engine as _}, super::{Error, PublicKey}};
 
-    fn eat_len(der: &mut &[u8]) -> usize {
+    fn eat_len(der: &mut &[u8]) -> Result<usize, Error> {
         if der[0] & 0x80 == 0x80 {
+            const BITS: usize = (usize::BITS / 8) as usize;
             let len = (der[0] & (!0x80)) as usize;
-            let mut bytes = [0u8; 8];
-            bytes[8-len..].copy_from_slice(&der[1..=len]);
+            if len > BITS {
+                return Err(Error::InvalidPem);
+            }
+            let mut bytes = [0u8; BITS];
+            bytes[BITS-len..].copy_from_slice(&der[1..=len]);
             *der = &der[len + 1..];
-            usize::from_be_bytes(bytes)
+            Ok(usize::from_be_bytes(bytes))
         } else {
             let len = der[0] as usize;
             *der = &der[1..];
-            len
+            Ok(len)
         }
     }
 
@@ -30,7 +34,7 @@ mod der {
             return Err(Error::InvalidPem);
         }
         *der = &der[1..];
-        let len = eat_len(der);
+        let len = eat_len(der)?;
         let uint = BigUint::from_bytes_be(&der[..len]);
         *der = &der[len..];
         Ok(uint)
@@ -41,7 +45,7 @@ mod der {
             return Err(Error::InvalidPem);
         }
         *der = &der[1..];
-        let len = eat_len(der);
+        let len = eat_len(der)?;
         let sequence = &der[..len];
         *der = &der[len..];
         Ok(sequence)
@@ -52,7 +56,7 @@ mod der {
             return Err(Error::InvalidPem);
         }
         *der = &der[1..];
-        let len = eat_len(der);
+        let len = eat_len(der)?;
         let unused_bits = der[0];
         let bit_string = &der[1..len];
         *der = &der[len..];
@@ -150,6 +154,7 @@ impl<R: Rng + CryptoRng> OaepPadding<R> {
     }
 
     fn mgf1(seed: &[u8], len: usize) -> Result<Vec<u8>, Error> {
+        #[cfg(target_pointer_width = "64")]
         if len > Self::HASH_LEN << 32 {
             return Err(Error::MessageTooLong);
         }
