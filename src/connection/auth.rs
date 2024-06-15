@@ -1,13 +1,11 @@
 use {
-    super::{types::AuthPlugin, Connection, ParseBuf, Stream, BUFFER_POOL},
+    super::{types::AuthPlugin, Connection, ParseBuf, Stream},
     crate::{
-        error::{ProtocolError, SerializeError},
+        error::ProtocolError,
         packets::{AuthSwitchRequest, ErrPacket},
-        utils::{OaepPadding, PublicKey},
         Deserialize, Error,
     },
-    rand::SeedableRng,
-    std::{future::Future, pin::Pin, sync::Arc},
+    std::{future::Future, pin::Pin},
 };
 
 impl<T: Stream> Connection<T> {
@@ -15,6 +13,7 @@ impl<T: Stream> Connection<T> {
         &mut self,
     ) -> Pin<Box<dyn Future<Output = Result<(), Error>> + '_>> {
         match self.options.auth_plugin.unwrap_or(self.data.auth_plugin) {
+            #[cfg(feature = "caching-sha2-password")]
             AuthPlugin::Sha2 => Box::pin(self.continue_caching_sha2_password_auth()),
             AuthPlugin::Native | AuthPlugin::Clear => {
                 Box::pin(self.continue_mysql_native_password_auth())
@@ -42,7 +41,15 @@ impl<T: Stream> Connection<T> {
         }
     }
 
+    #[cfg(feature = "caching-sha2-password")]
     async fn continue_caching_sha2_password_auth(&mut self) -> Result<(), Error> {
+        use {
+            crate::{
+                error::SerializeError,
+                utils::{OaepPadding, PublicKey},
+            },
+            rand::SeedableRng as _,
+        };
         let packet = self.read_packet().await?;
         match packet.first() {
             Some(0x00) => {
@@ -56,7 +63,7 @@ impl<T: Stream> Connection<T> {
                     Ok(())
                 }
                 Some(0x04) => {
-                    let mut pass = BUFFER_POOL.get();
+                    let mut pass = super::BUFFER_POOL.get();
                     pass.extend_from_slice(self.options.password.as_bytes());
                     pass.push(0);
 
@@ -70,7 +77,7 @@ impl<T: Stream> Connection<T> {
                                 let packet = self.read_packet().await?;
                                 match packet.first() {
                                     Some(0x01) => {
-                                        let server_key = Arc::new(
+                                        let server_key = std::sync::Arc::new(
                                             PublicKey::try_from_pem(&packet[1..])
                                                 .map_err(SerializeError::from)?,
                                         );

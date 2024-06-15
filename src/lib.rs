@@ -8,7 +8,10 @@ pub mod pool;
 pub mod types;
 mod utils;
 
-pub use {connection::*, error::Error, mysql_connector_macros as macros, utils::crypt::PublicKey};
+pub use {connection::*, error::Error, mysql_connector_macros as macros};
+
+#[cfg(feature = "caching-sha2-password")]
+pub use utils::crypt::PublicKey;
 
 #[cfg(feature = "tcpstream")]
 pub use tokio::net::TcpStream;
