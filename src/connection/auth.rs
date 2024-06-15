@@ -1,7 +1,13 @@
 use {
-    super::{types::AuthPlugin, Connection, ParseBuf, Stream, BUFFER_POOL}, crate::{
-        error::{ProtocolError, SerializeError}, packets::{AuthSwitchRequest, ErrPacket}, utils::{OaepPadding, PublicKey}, Deserialize, Error
-    }, rand::SeedableRng, std::{future::Future, pin::Pin, sync::Arc}
+    super::{types::AuthPlugin, Connection, ParseBuf, Stream, BUFFER_POOL},
+    crate::{
+        error::{ProtocolError, SerializeError},
+        packets::{AuthSwitchRequest, ErrPacket},
+        utils::{OaepPadding, PublicKey},
+        Deserialize, Error,
+    },
+    rand::SeedableRng,
+    std::{future::Future, pin::Pin, sync::Arc},
 };
 
 impl<T: Stream> Connection<T> {
@@ -9,9 +15,7 @@ impl<T: Stream> Connection<T> {
         &mut self,
     ) -> Pin<Box<dyn Future<Output = Result<(), Error>> + '_>> {
         match self.options.auth_plugin.unwrap_or(self.data.auth_plugin) {
-            AuthPlugin::Sha2 => {
-                Box::pin(self.continue_caching_sha2_password_auth())
-            }
+            AuthPlugin::Sha2 => Box::pin(self.continue_caching_sha2_password_auth()),
             AuthPlugin::Native | AuthPlugin::Clear => {
                 Box::pin(self.continue_mysql_native_password_auth())
             }
@@ -66,12 +70,27 @@ impl<T: Stream> Connection<T> {
                                 let packet = self.read_packet().await?;
                                 match packet.first() {
                                     Some(0x01) => {
-                                        let server_key = Arc::new(PublicKey::try_from_pem(&packet[1..]).map_err(SerializeError::from)?);
+                                        let server_key = Arc::new(
+                                            PublicKey::try_from_pem(&packet[1..])
+                                                .map_err(SerializeError::from)?,
+                                        );
                                         self.data.server_key = Some(server_key.clone());
                                         server_key
-                                    },
-                                    Some(0xFF) => return Err(Error::Server(ErrPacket::deserialize(&mut ParseBuf(&packet), self.data.capabilities)?)),
-                                    _ => return Err(Error::Protocol(ProtocolError::unexpected_packet(packet.to_vec(), Some("Server key")))),
+                                    }
+                                    Some(0xFF) => {
+                                        return Err(Error::Server(ErrPacket::deserialize(
+                                            &mut ParseBuf(&packet),
+                                            self.data.capabilities,
+                                        )?))
+                                    }
+                                    _ => {
+                                        return Err(Error::Protocol(
+                                            ProtocolError::unexpected_packet(
+                                                packet.to_vec(),
+                                                Some("Server key"),
+                                            ),
+                                        ))
+                                    }
                                 }
                             }
                         };
@@ -79,14 +98,22 @@ impl<T: Stream> Connection<T> {
                             *byte ^= self.data.nonce[i % self.data.nonce.len()];
                         }
                         let padding = OaepPadding::new(rand::rngs::StdRng::from_entropy());
-                        let encrypted_pass = server_key.encrypt_padded(&pass, padding).map_err(SerializeError::from)?;
+                        let encrypted_pass = server_key
+                            .encrypt_padded(&pass, padding)
+                            .map_err(SerializeError::from)?;
                         self.write_packet(&encrypted_pass).await?;
                     }
                     let res = self.read_packet().await?;
                     match res.first() {
                         Some(0x00) => Ok(()),
-                        Some(0xFF) => Err(Error::Server(ErrPacket::deserialize(&mut ParseBuf(&res), self.data.capabilities)?)),
-                        _ => Err(Error::Protocol(ProtocolError::unexpected_packet(res.to_vec(), None)))
+                        Some(0xFF) => Err(Error::Server(ErrPacket::deserialize(
+                            &mut ParseBuf(&res),
+                            self.data.capabilities,
+                        )?)),
+                        _ => Err(Error::Protocol(ProtocolError::unexpected_packet(
+                            res.to_vec(),
+                            None,
+                        ))),
                     }
                 }
                 _ => Err(ProtocolError::unexpected_packet(packet.to_vec(), None).into()),

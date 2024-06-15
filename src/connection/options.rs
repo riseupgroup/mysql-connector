@@ -54,6 +54,7 @@ impl fmt::Debug for ConnectionOptions {
             .field("nodelay", &self.nodelay)
             .field("allow_cleartext_password", &self.allow_cleartext_password)
             .field("auth_plugin", &self.auth_plugin)
+            .field("server_key", &self.server_key)
             .finish()
     }
 }

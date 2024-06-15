@@ -1,5 +1,7 @@
 use {
-    num::BigUint, rand::{CryptoRng, Rng}, sha1::{Digest, Sha1}
+    num::BigUint,
+    rand::{CryptoRng, Rng},
+    sha1::{Digest, Sha1},
 };
 
 #[derive(Debug)]
@@ -9,7 +11,11 @@ pub enum Error {
 }
 
 mod der {
-    use {num::BigUint, base64::{engine::general_purpose::STANDARD, Engine as _}, super::{Error, PublicKey}};
+    use {
+        super::{Error, PublicKey},
+        base64::{engine::general_purpose::STANDARD, Engine as _},
+        num::BigUint,
+    };
 
     fn eat_len(der: &mut &[u8]) -> Result<usize, Error> {
         if der[0] & 0x80 == 0x80 {
@@ -19,7 +25,7 @@ mod der {
                 return Err(Error::InvalidPem);
             }
             let mut bytes = [0u8; BITS];
-            bytes[BITS-len..].copy_from_slice(&der[1..=len]);
+            bytes[BITS - len..].copy_from_slice(&der[1..=len]);
             *der = &der[len + 1..];
             Ok(usize::from_be_bytes(bytes))
         } else {
@@ -40,7 +46,7 @@ mod der {
         Ok(uint)
     }
 
-    fn eat_sequence<'a>(der: &mut &'a[u8]) -> Result<&'a[u8], Error> {
+    fn eat_sequence<'a>(der: &mut &'a [u8]) -> Result<&'a [u8], Error> {
         if der[0] != 0x30 {
             return Err(Error::InvalidPem);
         }
@@ -51,7 +57,7 @@ mod der {
         Ok(sequence)
     }
 
-    fn eat_bit_string<'a>(der: &mut &'a[u8]) -> Result<(u8, &'a[u8]), Error> {
+    fn eat_bit_string<'a>(der: &mut &'a [u8]) -> Result<(u8, &'a [u8]), Error> {
         if der[0] != 0x03 {
             return Err(Error::InvalidPem);
         }
@@ -70,7 +76,7 @@ mod der {
             let exponent = eat_uint(&mut pub_key)?;
             Ok(Self { modulus, exponent })
         }
-        
+
         pub fn try_from_pkcs8(mut der: &[u8]) -> Result<Self, Error> {
             let mut seq_data = eat_sequence(&mut der)?;
             eat_sequence(&mut seq_data)?;
@@ -80,21 +86,26 @@ mod der {
             }
             Self::try_from_pkcs1(pub_key)
         }
-    
-        pub fn try_from_pem(pem: &[u8]) -> Result<Self, Error>{
-            const PKCS1: (&[u8], &[u8]) = (b"-----BEGINRSAPUBLICKEY-----", b"-----ENDRSAPUBLICKEY-----");
+
+        pub fn try_from_pem(pem: &[u8]) -> Result<Self, Error> {
+            const PKCS1: (&[u8], &[u8]) =
+                (b"-----BEGINRSAPUBLICKEY-----", b"-----ENDRSAPUBLICKEY-----");
             const PKCS8: (&[u8], &[u8]) = (b"-----BEGINPUBLICKEY-----", b"-----ENDPUBLICKEY-----");
 
-            let pem: Vec<u8> = pem.iter().filter(|x| !b" \n\t\r\x0b\x0c".contains(x)).cloned().collect();
-        
+            let pem: Vec<u8> = pem
+                .iter()
+                .filter(|x| !b" \n\t\r\x0b\x0c".contains(x))
+                .cloned()
+                .collect();
+
             let (body, is_pkcs_1) = if pem.starts_with(PKCS1.0) && pem.ends_with(PKCS1.1) {
-                (&pem[PKCS1.0.len()..pem.len()-PKCS1.1.len()], true)
+                (&pem[PKCS1.0.len()..pem.len() - PKCS1.1.len()], true)
             } else if pem.starts_with(PKCS8.0) && pem.ends_with(PKCS8.1) {
-                (&pem[PKCS8.0.len()..pem.len()-PKCS8.1.len()], false)
+                (&pem[PKCS8.0.len()..pem.len() - PKCS8.1.len()], false)
             } else {
                 return Err(Error::InvalidPem);
             };
-        
+
             let body = STANDARD.decode(body).map_err(|_| Error::InvalidPem)?;
             match is_pkcs_1 {
                 true => Self::try_from_pkcs1(&body),
@@ -127,7 +138,11 @@ impl PublicKey {
         &self.exponent
     }
 
-    pub fn encrypt_padded<R: Rng + CryptoRng>(&self, data: &[u8], mut padding: OaepPadding<R>) -> Result<Vec<u8>, Error> {
+    pub fn encrypt_padded<R: Rng + CryptoRng>(
+        &self,
+        data: &[u8],
+        mut padding: OaepPadding<R>,
+    ) -> Result<Vec<u8>, Error> {
         let octets = self.num_octets();
         let padded = BigUint::from_bytes_be(&padding.pad(data, octets)?);
         let mut encrypted = padded.modpow(self.exponent(), self.modulus()).to_bytes_be();
@@ -163,24 +178,25 @@ impl<R: Rng + CryptoRng> OaepPadding<R> {
         let mut hash_source = vec![0u8; seed.len() + 4];
         hash_source[0..seed.len()].copy_from_slice(seed);
 
-        for i in 0..(len/Self::HASH_LEN) {
+        for i in 0..(len / Self::HASH_LEN) {
             hash_source[seed.len()..].copy_from_slice(&(i as u32).to_be_bytes());
             let pos = i * Self::HASH_LEN;
-            output[pos..pos+Self::HASH_LEN].copy_from_slice(&Sha1::digest(&hash_source));
+            output[pos..pos + Self::HASH_LEN].copy_from_slice(&Sha1::digest(&hash_source));
         }
 
         let remaining = len % Self::HASH_LEN;
         if remaining > 0 {
-            hash_source[seed.len()..].copy_from_slice(&((len/Self::HASH_LEN) as u32).to_be_bytes());
-            output[len-remaining..].copy_from_slice(&Sha1::digest(&hash_source)[..remaining]);
+            hash_source[seed.len()..]
+                .copy_from_slice(&((len / Self::HASH_LEN) as u32).to_be_bytes());
+            output[len - remaining..].copy_from_slice(&Sha1::digest(&hash_source)[..remaining]);
         }
         Ok(output)
     }
 
     /// Pads data according to RFC 8017.
-    /// 
+    ///
     /// Returns an error if data is too long.
-    /// 
+    ///
     ///  ```text
     ///                                                  msg_len
     ///                           ┣━━━━━━━ filling_len ━━┻━━━━━━━━━━━━━┫
@@ -212,16 +228,16 @@ impl<R: Rng + CryptoRng> OaepPadding<R> {
             }
             let (filling, msg_data) = msg.split_at_mut(filling_len);
             filling[0..Self::HASH_LEN].copy_from_slice(&Sha1::digest([]));
-            filling[filling_len-1] = 0x01;
+            filling[filling_len - 1] = 0x01;
             msg_data.copy_from_slice(data);
         }
 
-        let msg_mask = Self::mgf1(&seed, msg.len())?;
+        let msg_mask = Self::mgf1(seed, msg.len())?;
         for i in 0..msg.len() {
             msg[i] ^= msg_mask[i];
         }
 
-        let seed_mask = Self::mgf1(&msg, seed_len)?;
+        let seed_mask = Self::mgf1(msg, seed_len)?;
         for i in 0..seed_len {
             seed[i] ^= seed_mask[i];
         }

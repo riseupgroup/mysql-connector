@@ -13,9 +13,7 @@ Simple MySQL connector for Rust that allows exchanging the underlying connection
 ```no_run
 use std::sync::Arc;
 
-use mysql_connector::{
-    macros::*, model::*, types::AuthPlugin, Connection, ConnectionOptions, TcpStream,
-};
+use mysql_connector::{macros::*, model::*, Connection, ConnectionOptions, TcpStream};
 
 #[derive(Debug, ModelData, FromQueryResult, ActiveModel, IntoQuery, Model)]
 #[mysql_connector(table = "user", primary = "id", auto_increment = "true")]
@@ -33,8 +31,6 @@ async fn main() {
         password: std::env::var("PASSWORD").unwrap(),
         db_name: Some("db".into()),
         host: Some("localhost".into()),
-        secure_auth: false,
-        auth_plugin: Some(AuthPlugin::Native),
         ..Default::default()
     }))
     .await

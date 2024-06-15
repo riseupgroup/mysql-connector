@@ -1,7 +1,10 @@
 mod parse;
 mod protocol;
 
-use {crate::{connection::types::AuthPlugin, packets::ErrPacket}, std::io};
+use {
+    crate::{connection::types::AuthPlugin, packets::ErrPacket},
+    std::io,
+};
 
 pub use {
     parse::{InvalidFlags, ParseError},
