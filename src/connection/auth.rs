@@ -42,6 +42,7 @@ impl<T: Stream> Connection<T> {
     }
 
     #[cfg(feature = "caching-sha2-password")]
+    #[cfg_attr(doc, doc(cfg(feature = "caching-sha2-password")))]
     async fn continue_caching_sha2_password_auth(&mut self) -> Result<(), Error> {
         use {
             crate::{

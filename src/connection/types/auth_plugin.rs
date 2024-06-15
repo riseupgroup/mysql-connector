@@ -9,6 +9,7 @@ use {
 
 const MYSQL_NATIVE_PASSWORD_PLUGIN_NAME: &[u8] = b"mysql_native_password";
 #[cfg(feature = "caching-sha2-password")]
+#[cfg_attr(doc, doc(cfg(feature = "caching-sha2-password")))]
 const CACHING_SHA2_PASSWORD_PLUGIN_NAME: &[u8] = b"caching_sha2_password";
 const MYSQL_CLEAR_PASSWORD_PLUGIN_NAME: &[u8] = b"mysql_clear_password";
 
@@ -22,6 +23,7 @@ pub enum AuthPlugin {
     ///
     /// Default since MySQL 8.4
     #[cfg(feature = "caching-sha2-password")]
+    #[cfg_attr(doc, doc(cfg(feature = "caching-sha2-password")))]
     Sha2,
 }
 

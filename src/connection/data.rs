@@ -11,6 +11,7 @@ pub struct ConnectionData {
     pub(super) capabilities: CapabilityFlags,
     pub(super) nonce: Vec<u8>,
     #[cfg(feature = "caching-sha2-password")]
+    #[cfg_attr(doc, doc(cfg(feature = "caching-sha2-password")))]
     pub(super) server_key: Option<std::sync::Arc<crate::PublicKey>>,
     pub(super) auth_plugin: AuthPlugin,
     pub(super) auth_switched: bool,

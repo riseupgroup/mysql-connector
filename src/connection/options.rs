@@ -17,8 +17,10 @@ pub struct ConnectionOptions {
     /// Ignore auth plugin specified in handshake and start authentication using this plugin.
     pub auth_plugin: Option<AuthPlugin>,
     #[cfg(feature = "caching-sha2-password")]
+    #[cfg_attr(doc, doc(cfg(feature = "caching-sha2-password")))]
     pub server_key: Option<std::sync::Arc<crate::PublicKey>>,
     #[cfg(not(feature = "time"))]
+    #[cfg_attr(doc, doc(cfg(feature = "time")))]
     pub sleep: Option<&'static dyn Fn(Duration) -> crate::TimeoutFuture>,
 }
 

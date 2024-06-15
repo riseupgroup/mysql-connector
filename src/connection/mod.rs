@@ -84,6 +84,7 @@ pub trait Stream: Sized + AsyncRead + AsyncWrite + Unpin + fmt::Debug {
 }
 
 #[cfg(feature = "tcpstream")]
+#[cfg_attr(doc, doc(cfg(feature = "tcpstream")))]
 impl Stream for tokio::net::TcpStream {
     const SECURE: bool = false;
 

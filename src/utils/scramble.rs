@@ -33,6 +33,7 @@ pub fn scramble_native(nonce: &[u8], password: &[u8]) -> Option<[u8; 20]> {
 
 /// SHA256(password) XOR SHA256(SHA256(SHA256(password)), nonce)
 #[cfg(feature = "caching-sha2-password")]
+#[cfg_attr(doc, doc(cfg(feature = "caching-sha2-password")))]
 pub fn scramble_sha256(nonce: &[u8], password: &[u8]) -> Option<[u8; 32]> {
     if password.is_empty() {
         return None;
