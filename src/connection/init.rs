@@ -70,6 +70,7 @@ impl<T: Stream> Connection<T> {
             version,
             capabilities: handshake.capabilities() & options.get_capabilities(),
             nonce: handshake.into_nonce(),
+            server_key: options.server_key.clone(),
             auth_plugin,
             auth_switched: false,
             max_allowed_packet: options

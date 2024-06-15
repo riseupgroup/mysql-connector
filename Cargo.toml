@@ -38,6 +38,7 @@ serde = { version = "1.0.203", optional = true }
 hex = "0.4.3"
 num = "0.4.3"
 rand = "0.8.5"
+base64 = "0.22.1"
 
 [dev-dependencies]
 dotenv = "0.15.0"

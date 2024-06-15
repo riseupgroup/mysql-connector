@@ -1,5 +1,5 @@
 use {
-    num::BigUint, rand::{CryptoRng, Rng, SeedableRng}, sha1::{Digest, Sha1}
+    num::BigUint, rand::{CryptoRng, Rng}, sha1::{Digest, Sha1}
 };
 
 #[derive(Debug)]
@@ -100,6 +100,7 @@ mod der {
     }
 }
 
+#[derive(Debug)]
 pub struct PublicKey {
     modulus: BigUint,
     exponent: BigUint,

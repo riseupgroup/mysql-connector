@@ -1,6 +1,6 @@
 use {
     super::{Error, ParseError},
-    crate::types::ValueType,
+    crate::{types::ValueType, utils::crypt},
     std::{convert::Infallible, fmt, io},
 };
 
@@ -8,11 +8,18 @@ use {
 pub enum SerializeError {
     Infallible,
     InvalidValue(ValueType, Box<dyn fmt::Debug>),
+    Encryption(crypt::Error),
 }
 
 impl From<Infallible> for SerializeError {
     fn from(_value: Infallible) -> Self {
         Self::Infallible
+    }
+}
+
+impl From<crypt::Error> for SerializeError {
+    fn from(value: crypt::Error) -> Self {
+        Self::Encryption(value)
     }
 }
 

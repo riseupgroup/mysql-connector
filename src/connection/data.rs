@@ -1,7 +1,7 @@
 use {
     super::types::AuthPlugin,
-    crate::{bitflags::CapabilityFlags, TimeoutFuture},
-    std::fmt,
+    crate::{bitflags::CapabilityFlags, PublicKey, TimeoutFuture},
+    std::{fmt, sync::Arc},
 };
 
 pub struct ConnectionData {
@@ -10,6 +10,7 @@ pub struct ConnectionData {
     pub(super) version: (u16, u16, u16),
     pub(super) capabilities: CapabilityFlags,
     pub(super) nonce: Vec<u8>,
+    pub(super) server_key: Option<Arc<PublicKey>>,
     pub(super) auth_plugin: AuthPlugin,
     pub(super) auth_switched: bool,
     pub(super) max_allowed_packet: usize,
@@ -50,6 +51,7 @@ impl fmt::Debug for ConnectionData {
             .field("version", &self.version)
             .field("capabilities", &self.capabilities)
             .field("nonce", &self.nonce)
+            .field("server_key", &self.server_key)
             .field("auth_plugin", &self.auth_plugin)
             .field("auth_switched", &self.auth_switched)
             .field("max_allowed_packet", &self.max_allowed_packet)

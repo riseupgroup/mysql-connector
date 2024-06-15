@@ -2,7 +2,7 @@ mod buf_mut_ext;
 mod scramble;
 pub(crate) mod crypt;
 
-pub(crate) use {buf_mut_ext::BufMutExt, scramble::*};
+pub(crate) use {buf_mut_ext::BufMutExt, scramble::*, crypt::{PublicKey, OaepPadding}};
 
 pub fn lenenc_int_len(x: u64) -> u64 {
     if x < 251 {

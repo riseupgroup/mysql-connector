@@ -1,7 +1,7 @@
 use {
     super::types::AuthPlugin,
-    crate::bitflags::CapabilityFlags,
-    std::{fmt, time::Duration},
+    crate::{bitflags::CapabilityFlags, PublicKey},
+    std::{fmt, sync::Arc, time::Duration},
 };
 
 pub struct ConnectionOptions {
@@ -18,6 +18,7 @@ pub struct ConnectionOptions {
     pub secure_auth: bool,
     /// Ignore auth plugin specified in handshake and start authentication using this plugin.
     pub auth_plugin: Option<AuthPlugin>,
+    pub server_key: Option<Arc<PublicKey>>,
     #[cfg(not(feature = "time"))]
     pub sleep: Option<&'static dyn Fn(Duration) -> crate::TimeoutFuture>,
 }
@@ -36,6 +37,7 @@ impl Default for ConnectionOptions {
             allow_cleartext_password: false,
             secure_auth: true,
             auth_plugin: None,
+            server_key: None,
             #[cfg(not(feature = "time"))]
             sleep: None,
         }
