@@ -73,7 +73,7 @@ impl AuthPlugin {
         nonce: &[u8],
         options: &Arc<ConnectionOptions>,
     ) -> Result<Option<AuthPluginData>, Error> {
-        use crate::utils::scramble_native;
+        use crate::utils::{scramble_native, scramble_sha256};
 
         Ok(match self {
             AuthPlugin::Clear => {
@@ -88,11 +88,7 @@ impl AuthPlugin {
                 }
                 scramble_native(nonce, pass.as_bytes()).map(AuthPluginData::Native)
             }
-            AuthPlugin::Sha2 => unimplemented!(concat!(
-                "caching_sha2_password_auth is not yet implemented.\n",
-                "You can change the auth method of an user by running `alter user \"user\"@\"host\" identified with mysql_native_password by \"password\"`.\n",
-                "To list all users, you can run `select user, host from mysql.user`.\n"
-            )),
+            AuthPlugin::Sha2 => scramble_sha256(nonce, pass.as_bytes()).map(AuthPluginData::Sha2),
         })
     }
 }
