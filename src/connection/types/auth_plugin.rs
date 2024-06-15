@@ -75,17 +75,20 @@ impl AuthPlugin {
     ) -> Result<Option<AuthPluginData>, Error> {
         use crate::utils::{scramble_native, scramble_sha256};
 
+        if let Some(force_plugin) = options.auth_plugin {
+            if *self != force_plugin {
+                return Err(RuntimeError::auth_plugin_mismatch(force_plugin, *self).into());
+            }
+        }
+
         Ok(match self {
             AuthPlugin::Clear => {
-                if !options.allow_cleartext_password || options.secure_auth {
+                if !options.allow_cleartext_password {
                     return Err(RuntimeError::InsecureAuth.into());
                 }
                 Some(AuthPluginData::Clear(pass.as_bytes().to_vec()))
             }
             AuthPlugin::Native => {
-                if options.secure_auth {
-                    return Err(RuntimeError::InsecureAuth.into());
-                }
                 scramble_native(nonce, pass.as_bytes()).map(AuthPluginData::Native)
             }
             AuthPlugin::Sha2 => scramble_sha256(nonce, pass.as_bytes()).map(AuthPluginData::Sha2),
