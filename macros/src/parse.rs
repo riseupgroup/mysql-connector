@@ -5,13 +5,13 @@ use {
     syn::{
         punctuated::Punctuated, spanned::Spanned, token, Attribute, Data, Expr, ExprLit,
         GenericArgument, Ident, Lit, Member, MetaNameValue, Path, PathArguments, PathSegment,
-        Token, Type, TypePath, Visibility,
+        Token, Type, TypePath,
     },
 };
 
 pub struct NamedField {
     pub complexity: TypeComplexity,
-    pub vis: Visibility,
+    //pub vis: Visibility,
     pub ident: Ident,
     pub ty: Type,
 }
@@ -32,7 +32,7 @@ pub fn parse_fields(
                         Type::Path(path) => {
                             fields.push(NamedField {
                                 complexity: TypeComplexity::from_path(path, types),
-                                vis: field.vis.clone(),
+                                //vis: field.vis.clone(),
                                 ident: field.ident.clone().unwrap(),
                                 ty: field.ty.clone(),
                             });

@@ -1,6 +1,7 @@
 use crate::{error::ProtocolError, Deserialize, ParseBuf};
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct Stmt {
     pub id: u32,
     pub columns_len: u16,
