@@ -1,5 +1,4 @@
 #![cfg_attr(doc, feature(doc_cfg))]
-
 #![doc = include_str!("../README.md")]
 
 pub mod connection;
