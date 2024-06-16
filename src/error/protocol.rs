@@ -8,11 +8,22 @@ use {
 pub enum SerializeError {
     Infallible,
     InvalidValue(ValueType, Box<dyn fmt::Debug>),
+    #[cfg(feature = "caching-sha2-password")]
+    #[cfg_attr(doc, doc(cfg(feature = "caching-sha2-password")))]
+    Encryption(crate::utils::crypt::Error),
 }
 
 impl From<Infallible> for SerializeError {
     fn from(_value: Infallible) -> Self {
         Self::Infallible
+    }
+}
+
+#[cfg(feature = "caching-sha2-password")]
+#[cfg_attr(doc, doc(cfg(feature = "caching-sha2-password")))]
+impl From<crate::utils::crypt::Error> for SerializeError {
+    fn from(value: crate::utils::crypt::Error) -> Self {
+        Self::Encryption(value)
     }
 }
 

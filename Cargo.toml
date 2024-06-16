@@ -17,13 +17,14 @@ exclude = ["/.github"]
 all-features = true
 
 [features]
-default = ["tcpstream", "time"]
+default = ["tcpstream", "caching-sha2-password", "time"]
 tcpstream = ["tokio/net"]
+caching-sha2-password = ["dep:sha2", "dep:num", "dep:rand", "dep:base64", "dep:getrandom"]
 time = ["tokio/time"]
 serde = ["dep:serde"]
 
 [dependencies]
-mysql-connector-macros = { path = "./macros", version = "0.0.2" }
+mysql-connector-macros = { path = "./macros", version = "=0.0.2" }
 bitflags = "2.5.0"
 btoi = "0.4.3"
 bytes = "1.6.0"
@@ -32,9 +33,16 @@ crossbeam = "0.8.4"
 lazy_static = "1.4.0"
 paste = "1.0.15"
 sha1 = "0.10.6"
+sha2 = { version = "0.10.6", optional = true }
 tokio = { version = "1.38.0", features = ["sync", "io-util"] }
 serde = { version = "1.0.203", optional = true }
 hex = "0.4.3"
+num = { version = "0.4.3", optional = true }
+rand = { version = "0.8.5", optional = true }
+base64 = { version = "0.22.1", optional = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.2.15", features = ["js"], optional = true }
 
 [dev-dependencies]
 dotenv = "0.15.0"

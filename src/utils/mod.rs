@@ -1,7 +1,15 @@
 mod buf_mut_ext;
 mod scramble;
 
+#[cfg(feature = "caching-sha2-password")]
+#[cfg_attr(doc, doc(cfg(feature = "caching-sha2-password")))]
+pub(crate) mod crypt;
+
 pub(crate) use {buf_mut_ext::BufMutExt, scramble::*};
+
+#[cfg(feature = "caching-sha2-password")]
+#[cfg_attr(doc, doc(cfg(feature = "caching-sha2-password")))]
+pub(crate) use crypt::{OaepPadding, PublicKey};
 
 pub fn lenenc_int_len(x: u64) -> u64 {
     if x < 251 {

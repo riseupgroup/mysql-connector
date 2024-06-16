@@ -14,11 +14,13 @@ pub struct ConnectionOptions {
     pub timeout: Duration,
     pub nodelay: bool,
     pub allow_cleartext_password: bool,
-    /// Only allow [`AuthPlugin::Sha2`] and [`AuthPlugin::Native`] authentication.
-    pub secure_auth: bool,
     /// Ignore auth plugin specified in handshake and start authentication using this plugin.
     pub auth_plugin: Option<AuthPlugin>,
+    #[cfg(feature = "caching-sha2-password")]
+    #[cfg_attr(doc, doc(cfg(feature = "caching-sha2-password")))]
+    pub server_key: Option<std::sync::Arc<crate::PublicKey>>,
     #[cfg(not(feature = "time"))]
+    #[cfg_attr(doc, doc(cfg(feature = "time")))]
     pub sleep: Option<&'static dyn Fn(Duration) -> crate::TimeoutFuture>,
 }
 
@@ -34,8 +36,12 @@ impl Default for ConnectionOptions {
             timeout: Duration::from_secs(10),
             nodelay: true,
             allow_cleartext_password: false,
-            secure_auth: true,
+            #[cfg(feature = "caching-sha2-password")]
+            auth_plugin: Some(AuthPlugin::Sha2),
+            #[cfg(not(feature = "caching-sha2-password"))]
             auth_plugin: None,
+            #[cfg(feature = "caching-sha2-password")]
+            server_key: None,
             #[cfg(not(feature = "time"))]
             sleep: None,
         }
@@ -44,7 +50,8 @@ impl Default for ConnectionOptions {
 
 impl fmt::Debug for ConnectionOptions {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("ConnectionOptions")
+        let mut debug = f.debug_struct("ConnectionOptions");
+        debug
             .field("user", &self.user)
             .field("password", &self.password)
             .field("db_name", &self.db_name)
@@ -54,9 +61,10 @@ impl fmt::Debug for ConnectionOptions {
             .field("timeout", &self.timeout)
             .field("nodelay", &self.nodelay)
             .field("allow_cleartext_password", &self.allow_cleartext_password)
-            .field("secure_auth", &self.secure_auth)
-            .field("auth_plugin", &self.auth_plugin)
-            .finish()
+            .field("auth_plugin", &self.auth_plugin);
+        #[cfg(feature = "caching-sha2-password")]
+        debug.field("server_key", &self.server_key);
+        debug.finish()
     }
 }
 

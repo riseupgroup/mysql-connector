@@ -1,7 +1,10 @@
 mod parse;
 mod protocol;
 
-use {crate::packets::ErrPacket, std::io};
+use {
+    crate::{connection::types::AuthPlugin, packets::ErrPacket},
+    std::io,
+};
 
 pub use {
     parse::{InvalidFlags, ParseError},
@@ -9,9 +12,22 @@ pub use {
 };
 
 #[derive(Debug)]
+pub struct AuthPluginMismatch {
+    pub current: AuthPlugin,
+    pub requested: AuthPlugin,
+}
+
+#[derive(Debug)]
 pub enum RuntimeError {
     ParameterCountMismatch,
     InsecureAuth,
+    AuthPluginMismatch(AuthPluginMismatch),
+}
+
+impl RuntimeError {
+    pub fn auth_plugin_mismatch(current: AuthPlugin, requested: AuthPlugin) -> Self {
+        Self::AuthPluginMismatch(AuthPluginMismatch { current, requested })
+    }
 }
 
 #[derive(Debug)]

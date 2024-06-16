@@ -1,9 +1,13 @@
 use crate::{error::ProtocolError, Deserialize, ParseBuf, Serialize};
 
 pub trait HalfInteger: Sized {
+    #[allow(dead_code)]
     fn serialize_upper(&self, buf: &mut Vec<u8>);
+    #[allow(dead_code)]
     fn serialize_lower(&self, buf: &mut Vec<u8>);
+    #[allow(dead_code)]
     fn deserialize_upper(buf: &mut ParseBuf<'_>) -> Result<Self, ProtocolError>;
+    #[allow(dead_code)]
     fn deserialize_lower(buf: &mut ParseBuf<'_>) -> Result<Self, ProtocolError>;
 }
 

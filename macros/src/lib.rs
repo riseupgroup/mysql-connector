@@ -128,7 +128,7 @@ pub fn derive_from_query_result(input: TokenStream) -> TokenStream {
             i,
             NamedField {
                 complexity: _,
-                vis: _,
+                //vis: _,
                 ident,
                 ty: _,
             },

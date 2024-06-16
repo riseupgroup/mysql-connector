@@ -77,11 +77,17 @@ impl<T: Stream> fmt::Debug for Connection<T> {
 
 #[allow(async_fn_in_trait)]
 pub trait Stream: Sized + AsyncRead + AsyncWrite + Unpin + fmt::Debug {
+    /// Set this to `true` if the connection is a socket or a shared-memory connection.
+    const SECURE: bool;
+
     async fn connect(host: &str, port: u16, nodelay: bool) -> Result<Self, std::io::Error>;
 }
 
 #[cfg(feature = "tcpstream")]
+#[cfg_attr(doc, doc(cfg(feature = "tcpstream")))]
 impl Stream for tokio::net::TcpStream {
+    const SECURE: bool = false;
+
     async fn connect(host: &str, port: u16, nodelay: bool) -> Result<Self, std::io::Error> {
         let this = Self::connect((host, port)).await?;
         this.set_nodelay(nodelay)?;

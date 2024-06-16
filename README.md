@@ -5,6 +5,7 @@ Simple MySQL connector for Rust that allows exchanging the underlying connection
 ## Features
 
 * `tcpstream` (enabled by default): implements the [`Stream`] trait for tokio's [`tokio::net::TcpStream`].
+* `caching-sha2-password` (enabled by default): implements the caching SHA-2 pluggable authentication plugin
 * `time` (enabled by default): uses [`tokio::time::sleep`] for network timeout.
 * `serde`: implements [`serde::Serialize`] and [`serde::Deserialize`] for some types.
 
@@ -13,9 +14,7 @@ Simple MySQL connector for Rust that allows exchanging the underlying connection
 ```no_run
 use std::sync::Arc;
 
-use mysql_connector::{
-    macros::*, model::*, types::AuthPlugin, Connection, ConnectionOptions, TcpStream,
-};
+use mysql_connector::{macros::*, model::*, Connection, ConnectionOptions, TcpStream};
 
 #[derive(Debug, ModelData, FromQueryResult, ActiveModel, IntoQuery, Model)]
 #[mysql_connector(table = "user", primary = "id", auto_increment = "true")]
@@ -33,8 +32,6 @@ async fn main() {
         password: std::env::var("PASSWORD").unwrap(),
         db_name: Some("db".into()),
         host: Some("localhost".into()),
-        secure_auth: false,
-        auth_plugin: Some(AuthPlugin::Native),
         ..Default::default()
     }))
     .await

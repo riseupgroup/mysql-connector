@@ -8,6 +8,8 @@ use {
 };
 
 const MYSQL_NATIVE_PASSWORD_PLUGIN_NAME: &[u8] = b"mysql_native_password";
+#[cfg(feature = "caching-sha2-password")]
+#[cfg_attr(doc, doc(cfg(feature = "caching-sha2-password")))]
 const CACHING_SHA2_PASSWORD_PLUGIN_NAME: &[u8] = b"caching_sha2_password";
 const MYSQL_CLEAR_PASSWORD_PLUGIN_NAME: &[u8] = b"mysql_clear_password";
 
@@ -19,7 +21,9 @@ pub enum AuthPlugin {
     Native,
     /// `caching_sha2_password`
     ///
-    /// Default since MySql v8.0.4
+    /// Default since MySQL 8.4
+    #[cfg(feature = "caching-sha2-password")]
+    #[cfg_attr(doc, doc(cfg(feature = "caching-sha2-password")))]
     Sha2,
 }
 
@@ -49,6 +53,7 @@ impl AuthPlugin {
         match name {
             MYSQL_CLEAR_PASSWORD_PLUGIN_NAME => Ok(AuthPlugin::Clear),
             MYSQL_NATIVE_PASSWORD_PLUGIN_NAME => Ok(AuthPlugin::Native),
+            #[cfg(feature = "caching-sha2-password")]
             CACHING_SHA2_PASSWORD_PLUGIN_NAME => Ok(AuthPlugin::Sha2),
             _ => Err(ProtocolError::UnknownAuthPlugin(name.to_vec())),
         }
@@ -58,6 +63,7 @@ impl AuthPlugin {
         match self {
             AuthPlugin::Clear => MYSQL_CLEAR_PASSWORD_PLUGIN_NAME,
             AuthPlugin::Native => MYSQL_NATIVE_PASSWORD_PLUGIN_NAME,
+            #[cfg(feature = "caching-sha2-password")]
             AuthPlugin::Sha2 => CACHING_SHA2_PASSWORD_PLUGIN_NAME,
         }
     }
@@ -73,26 +79,26 @@ impl AuthPlugin {
         nonce: &[u8],
         options: &Arc<ConnectionOptions>,
     ) -> Result<Option<AuthPluginData>, Error> {
-        use crate::utils::scramble_native;
+        if let Some(force_plugin) = options.auth_plugin {
+            if *self != force_plugin {
+                return Err(RuntimeError::auth_plugin_mismatch(force_plugin, *self).into());
+            }
+        }
 
         Ok(match self {
             AuthPlugin::Clear => {
-                if !options.allow_cleartext_password || options.secure_auth {
+                if !options.allow_cleartext_password {
                     return Err(RuntimeError::InsecureAuth.into());
                 }
                 Some(AuthPluginData::Clear(pass.as_bytes().to_vec()))
             }
             AuthPlugin::Native => {
-                if options.secure_auth {
-                    return Err(RuntimeError::InsecureAuth.into());
-                }
-                scramble_native(nonce, pass.as_bytes()).map(AuthPluginData::Native)
+                crate::utils::scramble_native(nonce, pass.as_bytes()).map(AuthPluginData::Native)
             }
-            AuthPlugin::Sha2 => unimplemented!(concat!(
-                "caching_sha2_password_auth is not yet implemented.\n",
-                "You can change the auth method of an user by running `alter user \"user\"@\"host\" identified with mysql_native_password by \"password\"`.\n",
-                "To list all users, you can run `select user, host from mysql.user`.\n"
-            )),
+            #[cfg(feature = "caching-sha2-password")]
+            AuthPlugin::Sha2 => {
+                crate::utils::scramble_sha256(nonce, pass.as_bytes()).map(AuthPluginData::Sha2)
+            }
         })
     }
 }
