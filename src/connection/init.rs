@@ -11,13 +11,8 @@ use {
 };
 
 impl<T: Stream> Connection<T> {
-    pub async fn connect(options: Arc<ConnectionOptions>) -> Result<Self, Error> {
-        let mut stream = T::connect(
-            options.host.as_deref().unwrap_or("localhost"),
-            options.port,
-            options.nodelay,
-        )
-        .await?;
+    pub async fn connect(options: Arc<ConnectionOptions<T>>) -> Result<Self, Error> {
+        let mut stream = T::connect(&options.connection).await?;
         let mut seq_id = 0;
 
         let data = Self::handle_handshake(&mut stream, &mut seq_id, options.clone()).await?;
@@ -41,7 +36,7 @@ impl<T: Stream> Connection<T> {
     async fn handle_handshake(
         stream: &mut T,
         seq_id: &mut u8,
-        options: Arc<ConnectionOptions>,
+        options: Arc<ConnectionOptions<T>>,
     ) -> Result<ConnectionData, Error> {
         #[cfg(feature = "time")]
         fn sleep(duration: std::time::Duration) -> crate::TimeoutFuture {

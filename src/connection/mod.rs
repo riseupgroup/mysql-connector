@@ -51,7 +51,7 @@ pub struct Connection<T: Stream> {
     stream: T,
     seq_id: u8,
     data: ConnectionData,
-    options: Arc<ConnectionOptions>,
+    options: Arc<ConnectionOptions<T>>,
     pending_result: bool,
 }
 
@@ -60,7 +60,7 @@ impl<T: Stream> Connection<T> {
         &self.data
     }
 
-    pub fn options(&self) -> Arc<ConnectionOptions> {
+    pub fn options(&self) -> Arc<ConnectionOptions<T>> {
         self.options.clone()
     }
 }
@@ -79,18 +79,41 @@ impl<T: Stream> fmt::Debug for Connection<T> {
 pub trait Stream: Sized + AsyncRead + AsyncWrite + Unpin + fmt::Debug {
     /// Set this to `true` if the connection is a socket or a shared-memory connection.
     const SECURE: bool;
+    type Options: Default + fmt::Debug;
 
-    async fn connect(host: &str, port: u16, nodelay: bool) -> Result<Self, std::io::Error>;
+    async fn connect(data: &Self::Options) -> Result<Self, std::io::Error>;
+}
+
+#[cfg(feature = "tcpstream")]
+#[cfg_attr(doc, doc(cfg(feature = "tcpstream")))]
+#[derive(Debug)]
+pub struct TcpStreamOptions {
+    pub host: String,
+    pub port: u16,
+    pub nodelay: bool,
+}
+
+#[cfg(feature = "tcpstream")]
+#[cfg_attr(doc, doc(cfg(feature = "tcpstream")))]
+impl Default for TcpStreamOptions {
+    fn default() -> Self {
+        Self {
+            host: String::from("localhost"),
+            port: 3306,
+            nodelay: true,
+        }
+    }
 }
 
 #[cfg(feature = "tcpstream")]
 #[cfg_attr(doc, doc(cfg(feature = "tcpstream")))]
 impl Stream for tokio::net::TcpStream {
     const SECURE: bool = false;
+    type Options = TcpStreamOptions;
 
-    async fn connect(host: &str, port: u16, nodelay: bool) -> Result<Self, std::io::Error> {
-        let this = Self::connect((host, port)).await?;
-        this.set_nodelay(nodelay)?;
+    async fn connect(data: &Self::Options) -> Result<Self, std::io::Error> {
+        let this = Self::connect((data.host.as_str(), data.port)).await?;
+        this.set_nodelay(data.nodelay)?;
         Ok(this)
     }
 }

@@ -1,7 +1,7 @@
 use {
     crate::{
         error::{ProtocolError, RuntimeError},
-        ConnectionOptions, Deserialize, Error, ParseBuf, Serialize,
+        ConnectionOptions, Deserialize, Error, ParseBuf, Serialize, Stream,
     },
     bytes::BufMut,
     std::sync::Arc,
@@ -73,11 +73,11 @@ impl AuthPlugin {
     /// It'll generate `None` if password is empty.
     ///
     /// Note that you should trim terminating null character from the `nonce`.
-    pub fn gen_data(
+    pub fn gen_data<T: Stream>(
         &self,
         pass: &str,
         nonce: &[u8],
-        options: &Arc<ConnectionOptions>,
+        options: &Arc<ConnectionOptions<T>>,
     ) -> Result<Option<AuthPluginData>, Error> {
         if let Some(force_plugin) = options.auth_plugin {
             if *self != force_plugin {

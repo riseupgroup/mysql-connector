@@ -1,18 +1,16 @@
 use {
     super::types::AuthPlugin,
-    crate::bitflags::CapabilityFlags,
+    crate::{bitflags::CapabilityFlags, Stream},
     std::{fmt, time::Duration},
 };
 
-pub struct ConnectionOptions {
+pub struct ConnectionOptions<T: Stream> {
     pub user: String,
     pub password: String,
     pub db_name: Option<String>,
-    pub host: Option<String>,
-    pub port: u16,
+    pub connection: T::Options,
     pub max_allowed_packet: Option<usize>,
     pub timeout: Duration,
-    pub nodelay: bool,
     pub allow_cleartext_password: bool,
     /// Ignore auth plugin specified in handshake and start authentication using this plugin.
     pub auth_plugin: Option<AuthPlugin>,
@@ -24,17 +22,15 @@ pub struct ConnectionOptions {
     pub sleep: Option<&'static dyn Fn(Duration) -> crate::TimeoutFuture>,
 }
 
-impl Default for ConnectionOptions {
+impl<T: Stream> Default for ConnectionOptions<T> {
     fn default() -> Self {
         Self {
             user: String::new(),
             password: String::new(),
             db_name: None,
-            host: None,
-            port: 3306,
+            connection: Default::default(),
             max_allowed_packet: None,
             timeout: Duration::from_secs(10),
-            nodelay: true,
             allow_cleartext_password: false,
             #[cfg(feature = "caching-sha2-password")]
             auth_plugin: Some(AuthPlugin::Sha2),
@@ -48,18 +44,16 @@ impl Default for ConnectionOptions {
     }
 }
 
-impl fmt::Debug for ConnectionOptions {
+impl<T: Stream> fmt::Debug for ConnectionOptions<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut debug = f.debug_struct("ConnectionOptions");
         debug
             .field("user", &self.user)
             .field("password", &self.password)
             .field("db_name", &self.db_name)
-            .field("host", &self.host)
-            .field("port", &self.port)
+            .field("connection", &self.connection)
             .field("max_allowed_packet", &self.max_allowed_packet)
             .field("timeout", &self.timeout)
-            .field("nodelay", &self.nodelay)
             .field("allow_cleartext_password", &self.allow_cleartext_password)
             .field("auth_plugin", &self.auth_plugin);
         #[cfg(feature = "caching-sha2-password")]
@@ -68,7 +62,7 @@ impl fmt::Debug for ConnectionOptions {
     }
 }
 
-impl ConnectionOptions {
+impl<T: Stream> ConnectionOptions<T> {
     pub fn get_capabilities(&self) -> CapabilityFlags {
         let mut out = CapabilityFlags::PROTOCOL_41
             | CapabilityFlags::SECURE_CONNECTION
