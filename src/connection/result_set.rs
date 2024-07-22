@@ -1,7 +1,7 @@
 use {
     super::{
         types::{Column, Protocol},
-        Connection, Stream, MAX_PAYLOAD_LEN,
+        Connection, MAX_PAYLOAD_LEN,
     },
     crate::{
         bitflags::CapabilityFlags,
@@ -12,9 +12,8 @@ use {
     std::marker::PhantomData,
 };
 
-pub struct ResultSet<'a, T, P, R>
+pub struct ResultSet<'a, P, R>
 where
-    T: Stream,
     P: Protocol,
     R: FromQueryResult,
 {
@@ -22,16 +21,15 @@ where
     columns: Vec<Column>,
     mapping: R::Mapping,
     ok_packet: Option<OkPacket>,
-    conn: &'a mut Connection<T>,
+    conn: &'a mut Connection,
 }
 
-impl<'a, T, P, R> ResultSet<'a, T, P, R>
+impl<'a, P, R> ResultSet<'a, P, R>
 where
-    T: Stream,
     P: Protocol,
     R: FromQueryResult,
 {
-    pub(super) async fn read(conn: &'a mut Connection<T>) -> Result<Self, Error> {
+    pub(super) async fn read(conn: &'a mut Connection) -> Result<Self, Error> {
         let packet = conn.read_packet().await?;
         match packet.first() {
             Some(0x00) => {
@@ -54,7 +52,7 @@ where
         }
     }
 
-    fn new(columns: Vec<Column>, conn: &'a mut Connection<T>) -> Self {
+    fn new(columns: Vec<Column>, conn: &'a mut Connection) -> Self {
         let mapping = R::Mapping::from_columns(&columns);
         Self {
             __phantom_data: PhantomData,
@@ -147,7 +145,7 @@ where
     }
 }
 
-impl<T: Stream> Connection<T> {
+impl Connection {
     pub async fn cleanup(&mut self) -> Result<Option<OkPacket>, Error> {
         if self.pending_result {
             loop {

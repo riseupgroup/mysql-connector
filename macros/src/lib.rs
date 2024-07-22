@@ -324,7 +324,7 @@ pub fn derive_active_model(input: TokenStream) -> TokenStream {
             }
 
             impl mysql_connector::model::ActiveModel<#ident> for #model_ident {
-                async fn into_values<S: mysql_connector::Stream>(self, conn: &mut mysql_connector::Connection<S>) -> Result<Vec<mysql_connector::model::NamedValue>, mysql_connector::error::Error> {
+                async fn into_values(self, conn: &mut mysql_connector::Connection) -> Result<Vec<mysql_connector::model::NamedValue>, mysql_connector::error::Error> {
                     let mut values = Vec::new();
                     #(self.#simple_field_names.insert_named_value(&mut values, stringify!(#simple_field_names))?;)*
                     #insert_struct_fields

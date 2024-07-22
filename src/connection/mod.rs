@@ -41,31 +41,31 @@ pub(crate) use {
 
 pub use {
     data::ConnectionData,
-    options::ConnectionOptions,
+    options::{ConnectionOptions, ConnectionOptionsTrait},
     prepared_statement::PreparedStatement,
     result_set::ResultSet,
     timeout::{Timeout, TimeoutFuture},
 };
 
-pub struct Connection<T: Stream> {
-    stream: T,
+pub struct Connection {
+    stream: Box<dyn StreamRequirements>,
     seq_id: u8,
     data: ConnectionData,
-    options: Arc<ConnectionOptions<T>>,
+    options: Arc<dyn ConnectionOptionsTrait>,
     pending_result: bool,
 }
 
-impl<T: Stream> Connection<T> {
+impl Connection {
     pub fn data(&self) -> &ConnectionData {
         &self.data
     }
 
-    pub fn options(&self) -> Arc<ConnectionOptions<T>> {
+    pub fn options(&self) -> Arc<dyn ConnectionOptionsTrait> {
         self.options.clone()
     }
 }
 
-impl<T: Stream> fmt::Debug for Connection<T> {
+impl fmt::Debug for Connection {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Connection")
             .field("seq_id", &self.seq_id)
@@ -75,8 +75,11 @@ impl<T: Stream> fmt::Debug for Connection<T> {
     }
 }
 
+pub trait StreamRequirements: AsyncRead + AsyncWrite + Unpin + fmt::Debug + 'static {}
+impl<T: AsyncRead + AsyncWrite + Unpin + fmt::Debug + 'static> StreamRequirements for T {}
+
 #[allow(async_fn_in_trait)]
-pub trait Stream: Sized + AsyncRead + AsyncWrite + Unpin + fmt::Debug {
+pub trait Stream: Sized + StreamRequirements {
     /// Set this to `true` if the connection is a socket or a shared-memory connection.
     const SECURE: bool;
     type Options: Default + fmt::Debug;

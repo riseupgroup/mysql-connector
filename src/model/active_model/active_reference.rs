@@ -1,6 +1,6 @@
 use {
     super::{ActiveModel, NamedValue},
-    crate::{model::Model, Connection, Error, Stream},
+    crate::{model::Model, Connection, Error},
 };
 
 #[derive(Debug)]
@@ -11,11 +11,11 @@ pub enum ActiveReference<T: Model> {
 }
 
 impl<T: Model> ActiveReference<T> {
-    pub async fn insert_named_value<S: Stream>(
+    pub async fn insert_named_value(
         self,
         vec: &mut Vec<NamedValue>,
         name: &'static str,
-        conn: &mut Connection<S>,
+        conn: &mut Connection,
     ) -> Result<(), Error> {
         match self {
             Self::Set(id) => vec.push(NamedValue(name, id.into())),

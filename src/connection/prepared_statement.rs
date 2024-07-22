@@ -1,5 +1,5 @@
 use {
-    super::{types::BinaryProtocol, Command, Connection, ParseBuf, ResultSet, Stream},
+    super::{types::BinaryProtocol, Command, Connection, ParseBuf, ResultSet},
     crate::{
         error::{ProtocolError, RuntimeError},
         model::FromQueryResult,
@@ -10,17 +10,17 @@ use {
 };
 
 #[derive(Debug)]
-pub struct PreparedStatement<'a, T: Stream> {
+pub struct PreparedStatement<'a> {
     id: u32,
-    conn: &'a mut Connection<T>,
+    conn: &'a mut Connection,
     params: usize,
 }
 
-impl<'a, T: Stream> PreparedStatement<'a, T> {
+impl<'a> PreparedStatement<'a> {
     pub async fn query<V: SimpleValue, R: FromQueryResult>(
         &mut self,
         values: &[V],
-    ) -> Result<ResultSet<'_, T, BinaryProtocol, R>, Error> {
+    ) -> Result<ResultSet<'_, BinaryProtocol, R>, Error> {
         if values.len() != self.params {
             return Err(RuntimeError::ParameterCountMismatch.into());
         }
@@ -41,8 +41,8 @@ impl<'a, T: Stream> PreparedStatement<'a, T> {
     }
 }
 
-impl<T: Stream> Connection<T> {
-    pub async fn prepare_statement(&mut self, stmt: &str) -> Result<PreparedStatement<T>, Error> {
+impl Connection {
+    pub async fn prepare_statement(&mut self, stmt: &str) -> Result<PreparedStatement, Error> {
         self.execute_command(Command::StmtPrepare, stmt).await?;
         let packet = self.read_packet().await?;
         let stmt = match packet.first() {
@@ -70,7 +70,7 @@ impl<T: Stream> Connection<T> {
         &mut self,
         id: u32,
         params: &[V],
-    ) -> Result<ResultSet<'_, T, BinaryProtocol, R>, Error> {
+    ) -> Result<ResultSet<'_, BinaryProtocol, R>, Error> {
         let request = StmtExecuteRequest::new(id, params);
 
         if request.as_long_data() {

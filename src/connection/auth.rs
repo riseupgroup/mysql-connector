@@ -8,26 +8,26 @@ use {
     std::{future::Future, pin::Pin},
 };
 
-impl<T: Stream> Connection<T> {
-    pub(super) fn continue_auth(
+impl Connection {
+    pub(super) fn continue_auth<T: Stream>(
         &mut self,
     ) -> Pin<Box<dyn Future<Output = Result<(), Error>> + '_>> {
-        match self.options.auth_plugin.unwrap_or(self.data.auth_plugin) {
+        match self.options.auth_plugin().unwrap_or(self.data.auth_plugin) {
             #[cfg(feature = "caching-sha2-password")]
-            AuthPlugin::Sha2 => Box::pin(self.continue_caching_sha2_password_auth()),
+            AuthPlugin::Sha2 => Box::pin(self.continue_caching_sha2_password_auth::<T>()),
             AuthPlugin::Native | AuthPlugin::Clear => {
-                Box::pin(self.continue_mysql_native_password_auth())
+                Box::pin(self.continue_mysql_native_password_auth::<T>())
             }
         }
     }
 
-    async fn continue_mysql_native_password_auth(&mut self) -> Result<(), Error> {
+    async fn continue_mysql_native_password_auth<T: Stream>(&mut self) -> Result<(), Error> {
         let packet = self.read_packet().await?;
         match packet.first() {
             Some(0x00) => Ok(()),
             Some(0xFE) if !self.data.auth_switched => {
                 let auth_switch = AuthSwitchRequest::deserialize(&mut ParseBuf(&packet), ())?;
-                self.perform_auth_switch(auth_switch).await
+                self.perform_auth_switch::<T>(auth_switch).await
             }
             _ => Err(
                 match ErrPacket::deserialize(&mut ParseBuf(&packet), self.data.capabilities) {
@@ -43,7 +43,7 @@ impl<T: Stream> Connection<T> {
 
     #[cfg(feature = "caching-sha2-password")]
     #[cfg_attr(doc, doc(cfg(feature = "caching-sha2-password")))]
-    async fn continue_caching_sha2_password_auth(&mut self) -> Result<(), Error> {
+    async fn continue_caching_sha2_password_auth<T: Stream>(&mut self) -> Result<(), Error> {
         use {
             crate::{
                 error::SerializeError,
@@ -65,7 +65,7 @@ impl<T: Stream> Connection<T> {
                 }
                 Some(0x04) => {
                     let mut pass = super::BUFFER_POOL.get();
-                    pass.extend_from_slice(self.options.password.as_bytes());
+                    pass.extend_from_slice(self.options.password().as_bytes());
                     pass.push(0);
 
                     if T::SECURE {
@@ -127,8 +127,8 @@ impl<T: Stream> Connection<T> {
                 _ => Err(ProtocolError::unexpected_packet(packet.to_vec(), None).into()),
             },
             Some(0xFE) if !self.data.auth_switched => {
-                let auth_switch_request = ParseBuf(&packet).parse::<AuthSwitchRequest>(()).unwrap();
-                self.perform_auth_switch(auth_switch_request).await
+                let auth_switch_request = ParseBuf(&packet).parse::<AuthSwitchRequest>(())?;
+                self.perform_auth_switch::<T>(auth_switch_request).await
             }
             _ => Err(
                 match ErrPacket::deserialize(&mut ParseBuf(&packet), self.data.capabilities) {
@@ -142,7 +142,7 @@ impl<T: Stream> Connection<T> {
         }
     }
 
-    async fn perform_auth_switch(
+    async fn perform_auth_switch<T: Stream>(
         &mut self,
         auth_switch_request: AuthSwitchRequest,
     ) -> Result<(), Error> {
@@ -156,9 +156,9 @@ impl<T: Stream> Connection<T> {
         self.data.nonce = auth_switch_request.into_data();
 
         let plugin_data = self.data.auth_plugin.gen_data(
-            &self.options.password,
+            self.options.password(),
             &self.data.nonce,
-            &self.options,
+            &*self.options,
         )?;
 
         if let Some(plugin_data) = plugin_data {
@@ -167,6 +167,6 @@ impl<T: Stream> Connection<T> {
             self.write_packet(&[]).await?;
         }
 
-        self.continue_auth().await
+        self.continue_auth::<T>().await
     }
 }

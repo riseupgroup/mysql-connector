@@ -1,7 +1,7 @@
 use {
     super::{
         packets::{ErrPacket, OkPacket},
-        Connection, ParseBuf, Serialize, Stream, BUFFER_POOL, MAX_PAYLOAD_LEN,
+        Connection, ParseBuf, Serialize, BUFFER_POOL, MAX_PAYLOAD_LEN,
     },
     crate::{
         error::ProtocolError,
@@ -9,14 +9,14 @@ use {
         pool::PoolItem,
         types::{SimpleValue, Value},
         utils::read_u32,
-        Deserialize, Error, Timeout, TimeoutFuture,
+        Deserialize, Error, StreamRequirements, Timeout, TimeoutFuture,
     },
     bytes::Buf,
     std::time::Duration,
     tokio::io::{AsyncReadExt, AsyncWriteExt},
 };
 
-impl<T: Stream> Connection<T> {
+impl Connection {
     pub(super) async fn send_long_data<'a, V, I>(
         &mut self,
         statement_id: u32,
@@ -44,7 +44,7 @@ impl<T: Stream> Connection<T> {
     }
 
     async fn read_chunk_to_buf(
-        stream: &mut T,
+        stream: &mut dyn StreamRequirements,
         dst: &mut Vec<u8>,
         sleep: &dyn Fn(std::time::Duration) -> TimeoutFuture,
         timeout: Duration,
@@ -70,7 +70,7 @@ impl<T: Stream> Connection<T> {
     }
 
     pub(super) async fn read_packet_to_buf(
-        stream: &mut T,
+        stream: &mut dyn StreamRequirements,
         seq_id: &mut u8,
         dst: &mut Vec<u8>,
         sleep: &dyn Fn(std::time::Duration) -> TimeoutFuture,
@@ -98,7 +98,7 @@ impl<T: Stream> Connection<T> {
             &mut self.seq_id,
             decode_buf.as_mut(),
             self.data.sleep,
-            self.options.timeout,
+            self.options.timeout(),
         )
         .await?;
         Ok(decode_buf)
@@ -113,13 +113,13 @@ impl<T: Stream> Connection<T> {
                 self.stream
                     .write_u32_le(chunk_len as u32 | (u32::from(self.seq_id) << 24)),
                 self.data.sleep,
-                self.options.timeout,
+                self.options.timeout(),
             )
             .await??;
             Timeout::new(
                 self.stream.write_all(&bytes[..chunk_len]),
                 self.data.sleep,
-                self.options.timeout,
+                self.options.timeout(),
             )
             .await??;
             bytes = &bytes[chunk_len..];
@@ -130,7 +130,7 @@ impl<T: Stream> Connection<T> {
             Timeout::new(
                 self.stream.write_u32_le(u32::from(self.seq_id) << 24),
                 self.data.sleep,
-                self.options.timeout,
+                self.options.timeout(),
             )
             .await??;
             self.seq_id = self.seq_id.wrapping_add(1);

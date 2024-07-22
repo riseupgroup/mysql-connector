@@ -1,6 +1,6 @@
 use {
     super::{ActiveModel, Model, NamedValue},
-    crate::{error::Error, Connection, Stream},
+    crate::{error::Error, Connection},
     std::ops::{Deref, DerefMut},
 };
 
@@ -18,7 +18,7 @@ impl<T: Model> UpdateModel<T> {
         }
     }
 
-    pub async fn update<S: Stream>(self, conn: &mut Connection<S>) -> Result<(), Error> {
+    pub async fn update(self, conn: &mut Connection) -> Result<(), Error> {
         let mut values = self.model.into_values(conn).await?;
         if !values.is_empty() {
             let stmt = NamedValue::into_update(&values, T::TABLE, T::PRIMARY)?;

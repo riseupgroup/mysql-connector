@@ -1,19 +1,19 @@
 use {
     super::{MigrationList, Version},
-    crate::{error::Error, migrator::model::MigrationModel, types::Value, Connection, Stream},
+    crate::{error::Error, migrator::model::MigrationModel, types::Value, Connection},
     std::collections::HashMap,
 };
 
-pub struct Migrator<'a, S: Stream + 'static> {
-    conn: &'a mut Connection<S>,
-    migrations: &'a [MigrationList<S>],
+pub struct Migrator<'a> {
+    conn: &'a mut Connection,
+    migrations: &'a [MigrationList],
     applied: HashMap<Version, Vec<String>>,
 }
 
-impl<'a, S: Stream + 'static> Migrator<'a, S> {
+impl<'a> Migrator<'a> {
     pub async fn new(
-        conn: &'a mut Connection<S>,
-        migrations: &'a [MigrationList<S>],
+        conn: &'a mut Connection,
+        migrations: &'a [MigrationList],
     ) -> Result<Self, Error> {
         debug_assert!(MigrationList::ordered(migrations));
 

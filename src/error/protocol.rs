@@ -57,7 +57,7 @@ pub enum ProtocolError {
     OutOfSync,
     UnexpectedPacket(UnexpectedPacket),
     InvalidPacket(InvalidPacket),
-    UnknownAuthPlugin(Vec<u8>),
+    UnknownAuthPlugin(String),
 }
 
 impl ProtocolError {

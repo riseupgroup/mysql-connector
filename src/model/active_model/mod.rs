@@ -5,7 +5,7 @@ mod update_model;
 
 use {
     super::Model,
-    crate::{error::Error, types::Value, Connection, Stream},
+    crate::{error::Error, types::Value, Connection},
 };
 
 pub use {
@@ -15,14 +15,11 @@ pub use {
 
 #[allow(async_fn_in_trait)]
 pub trait ActiveModel<ModelData: super::ModelData>: Default {
-    async fn into_values<S: Stream>(
-        self,
-        conn: &mut Connection<S>,
-    ) -> Result<Vec<NamedValue>, Error>;
+    async fn into_values(self, conn: &mut Connection) -> Result<Vec<NamedValue>, Error>;
 
     fn primary(&self) -> Option<Value>;
 
-    async fn insert<S: Stream>(self, conn: &mut Connection<S>) -> Result<u64, Error>
+    async fn insert(self, conn: &mut Connection) -> Result<u64, Error>
     where
         Self: Sized,
     {

@@ -1,26 +1,26 @@
 use {
-    crate::{error::Error, Connection, Stream},
+    crate::{error::Error, Connection},
     std::{cmp, fmt, future::Future, pin::Pin},
 };
 
-pub trait Migration<S: Stream> {
+pub trait Migration {
     fn name(&self) -> &'static str;
     fn up<'a>(
         &self,
-        conn: &'a mut Connection<S>,
+        conn: &'a mut Connection,
     ) -> Pin<Box<dyn Future<Output = Result<(), Error>> + 'a>>;
     fn down<'a>(
         &self,
-        conn: &'a mut Connection<S>,
+        conn: &'a mut Connection,
     ) -> Pin<Box<dyn Future<Output = Result<(), Error>> + 'a>>;
 }
 
-pub struct MigrationList<S: Stream + 'static> {
+pub struct MigrationList {
     pub version: Version,
-    pub migrations: &'static [&'static dyn Migration<S>],
+    pub migrations: &'static [&'static dyn Migration],
 }
 
-impl<S: Stream + 'static> MigrationList<S> {
+impl MigrationList {
     pub fn ordered(list: &[Self]) -> bool {
         if list.len() <= 1 {
             return true;

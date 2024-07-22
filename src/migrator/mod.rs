@@ -9,17 +9,17 @@ pub use {
 
 #[macro_export]
 macro_rules! simple_migration {
-    ($name:ident, $up:literal, $down:literal) => {
+    ($name:ident, $up:literal, $down:literal $(,)?) => {
         struct $name;
 
-        impl<S: mysql_connector::Stream> mysql_connector::migrator::Migration<S> for $name {
+        impl mysql_connector::Migration for $name {
             fn name(&self) -> &'static str {
                 stringify!($name)
             }
 
             fn up<'a>(
                 &self,
-                conn: &'a mut mysql_connector::Connection<S>,
+                conn: &'a mut mysql_connector::Connection,
             ) -> std::pin::Pin<
                 Box<
                     dyn std::future::Future<Output = Result<(), mysql_connector::error::Error>>
@@ -31,7 +31,7 @@ macro_rules! simple_migration {
 
             fn down<'a>(
                 &self,
-                conn: &'a mut mysql_connector::Connection<S>,
+                conn: &'a mut mysql_connector::Connection,
             ) -> std::pin::Pin<
                 Box<
                     dyn std::future::Future<Output = Result<(), mysql_connector::error::Error>>

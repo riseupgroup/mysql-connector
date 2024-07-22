@@ -1,7 +1,7 @@
 use {
     super::{
         types::{Column, TextProtocol},
-        Command, Connection, ParseBuf, ResultSet, Stream, BUFFER_POOL,
+        Command, Connection, ParseBuf, ResultSet, BUFFER_POOL,
     },
     crate::{
         model::FromQueryResult,
@@ -11,11 +11,11 @@ use {
     },
 };
 
-impl<T: Stream> Connection<T> {
+impl Connection {
     pub async fn query<R: FromQueryResult>(
         &mut self,
         query: &str,
-    ) -> Result<ResultSet<'_, T, TextProtocol, R>, Error> {
+    ) -> Result<ResultSet<'_, TextProtocol, R>, Error> {
         self.execute_command(Command::Query, query).await?;
         ResultSet::read(self).await
     }
@@ -49,7 +49,7 @@ impl<T: Stream> Connection<T> {
     }
 
     pub(super) async fn read_settings(&mut self) -> Result<(), Error> {
-        if self.options.max_allowed_packet.is_none() {
+        if self.options.max_allowed_packet().is_none() {
             let mut res = self
                 .query::<Vec<Value>>("select @@max_allowed_packet")
                 .await?;

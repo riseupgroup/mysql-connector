@@ -1,10 +1,9 @@
 use {
     crate::{
         error::{ProtocolError, RuntimeError},
-        ConnectionOptions, Deserialize, Error, ParseBuf, Serialize, Stream,
+        ConnectionOptionsTrait, Deserialize, Error, ParseBuf, Serialize,
     },
     bytes::BufMut,
-    std::sync::Arc,
 };
 
 const MYSQL_NATIVE_PASSWORD_PLUGIN_NAME: &[u8] = b"mysql_native_password";
@@ -55,7 +54,9 @@ impl AuthPlugin {
             MYSQL_NATIVE_PASSWORD_PLUGIN_NAME => Ok(AuthPlugin::Native),
             #[cfg(feature = "caching-sha2-password")]
             CACHING_SHA2_PASSWORD_PLUGIN_NAME => Ok(AuthPlugin::Sha2),
-            _ => Err(ProtocolError::UnknownAuthPlugin(name.to_vec())),
+            _ => Err(ProtocolError::UnknownAuthPlugin(
+                String::from_utf8_lossy(name).into_owned(),
+            )),
         }
     }
 
@@ -73,13 +74,13 @@ impl AuthPlugin {
     /// It'll generate `None` if password is empty.
     ///
     /// Note that you should trim terminating null character from the `nonce`.
-    pub fn gen_data<T: Stream>(
+    pub fn gen_data(
         &self,
         pass: &str,
         nonce: &[u8],
-        options: &Arc<ConnectionOptions<T>>,
+        options: &dyn ConnectionOptionsTrait,
     ) -> Result<Option<AuthPluginData>, Error> {
-        if let Some(force_plugin) = options.auth_plugin {
+        if let Some(force_plugin) = options.auth_plugin() {
             if *self != force_plugin {
                 return Err(RuntimeError::auth_plugin_mismatch(force_plugin, *self).into());
             }
@@ -87,7 +88,7 @@ impl AuthPlugin {
 
         Ok(match self {
             AuthPlugin::Clear => {
-                if !options.allow_cleartext_password {
+                if !options.allow_cleartext_password() {
                     return Err(RuntimeError::InsecureAuth.into());
                 }
                 Some(AuthPluginData::Clear(pass.as_bytes().to_vec()))
