@@ -75,16 +75,33 @@ impl fmt::Debug for Connection {
     }
 }
 
-pub trait StreamRequirements: AsyncRead + AsyncWrite + Unpin + fmt::Debug + 'static {}
-impl<T: AsyncRead + AsyncWrite + Unpin + fmt::Debug + 'static> StreamRequirements for T {}
+pub trait StreamRequirements:
+    AsyncRead + AsyncWrite + Unpin + fmt::Debug + Send + Sync + 'static
+{
+}
+impl<T: AsyncRead + AsyncWrite + Unpin + fmt::Debug + Send + Sync + 'static> StreamRequirements
+    for T
+{
+}
 
 #[allow(async_fn_in_trait)]
 pub trait Stream: Sized + StreamRequirements {
     /// Set this to `true` if the connection is a socket or a shared-memory connection.
     const SECURE: bool;
-    type Options: Default + fmt::Debug;
+    type Options: Default + fmt::Debug + Send + Sync;
 
     async fn connect(data: &Self::Options) -> Result<Self, std::io::Error>;
+}
+
+impl<T: Stream> crate::pool::AsyncPoolContent<T> for Connection {
+    type Ctx = Arc<ConnectionOptions<T>>;
+    type Error = crate::Error;
+
+    fn new<'a>(
+        ctx: &'a Self::Ctx,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Self, Self::Error>> + 'a>> {
+        Box::pin(Self::connect(Arc::clone(ctx)))
+    }
 }
 
 #[cfg(feature = "tcpstream")]

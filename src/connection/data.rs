@@ -16,7 +16,7 @@ pub struct ConnectionData {
     pub(super) auth_plugin: AuthPlugin,
     pub(super) auth_switched: bool,
     pub(super) max_allowed_packet: usize,
-    pub(super) sleep: &'static dyn Fn(std::time::Duration) -> TimeoutFuture,
+    pub(super) sleep: &'static (dyn Fn(std::time::Duration) -> TimeoutFuture + Send + Sync),
 }
 
 impl ConnectionData {

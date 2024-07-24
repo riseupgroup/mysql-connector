@@ -4,7 +4,7 @@ use {
     std::{fmt, time::Duration},
 };
 
-pub trait ConnectionOptionsTrait: fmt::Debug {
+pub trait ConnectionOptionsTrait: fmt::Debug + Send + Sync {
     fn user(&self) -> &str;
     fn password(&self) -> &str;
     fn db_name(&self) -> Option<&str>;
@@ -17,7 +17,7 @@ pub trait ConnectionOptionsTrait: fmt::Debug {
     fn server_key(&self) -> Option<std::sync::Arc<crate::PublicKey>>;
     #[cfg(not(feature = "time"))]
     #[cfg_attr(doc, doc(cfg(not(feature = "time"))))]
-    fn sleep(&self) -> Option<&'static dyn Fn(Duration) -> crate::TimeoutFuture>;
+    fn sleep(&self) -> Option<&'static (dyn Fn(Duration) -> crate::TimeoutFuture + Send + Sync)>;
     fn get_capabilities(&self) -> CapabilityFlags;
 }
 
@@ -36,7 +36,7 @@ pub struct ConnectionOptions<T: Stream> {
     pub server_key: Option<std::sync::Arc<crate::PublicKey>>,
     #[cfg(not(feature = "time"))]
     #[cfg_attr(doc, doc(cfg(not(feature = "time"))))]
-    pub sleep: Option<&'static dyn Fn(Duration) -> crate::TimeoutFuture>,
+    pub sleep: Option<&'static (dyn Fn(Duration) -> crate::TimeoutFuture + Send + Sync)>,
 }
 
 impl<T: Stream> ConnectionOptionsTrait for ConnectionOptions<T> {
@@ -74,7 +74,7 @@ impl<T: Stream> ConnectionOptionsTrait for ConnectionOptions<T> {
     }
 
     #[cfg(not(feature = "time"))]
-    fn sleep(&self) -> Option<&'static dyn Fn(Duration) -> crate::TimeoutFuture> {
+    fn sleep(&self) -> Option<&'static (dyn Fn(Duration) -> crate::TimeoutFuture + Send + Sync)> {
         self.sleep
     }
 

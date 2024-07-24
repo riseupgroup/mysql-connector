@@ -79,6 +79,10 @@ pub fn derive_from_query_result(input: TokenStream) -> TokenStream {
         return error.into_compile_error().into();
     }
 
+    let ident = &input.ident;
+    let visibility = &input.vis;
+    let mapping_ident = format_ident!("{ident}Mapping");
+
     let simple_field_names: &Vec<&Ident> = &fields
         .iter()
         .filter(TypeComplexity::simple_ref)
@@ -88,7 +92,7 @@ pub fn derive_from_query_result(input: TokenStream) -> TokenStream {
     let mut set_struct_fields = proc_macro2::TokenStream::new();
     for field in &fields {
         if let TypeComplexity::Struct(r#struct) = &field.complexity {
-            let ident = &field.ident;
+            let field_ident = &field.ident;
             let struct_path = &r#struct.path;
             let mapping_names = r#struct
                 .fields
@@ -98,8 +102,10 @@ pub fn derive_from_query_result(input: TokenStream) -> TokenStream {
             let struct_names = r#struct.fields.iter().map(|x| &x.0);
             set_struct_fields = quote! {
                 #set_struct_fields
-                #ident: #struct_path {
-                    #(#struct_names: row[mapping.#mapping_names.ok_or(mysql_connector::error::ParseError::MissingField(stringify!(#mapping_names)))?].take().try_into()?,)*
+                #field_ident: #struct_path {
+                    #(#struct_names: row[mapping.#mapping_names.ok_or(mysql_connector::error::ParseError::MissingField(
+                        concat!(stringify!(#ident), ".", stringify!(#mapping_names))
+                    ))?].take().try_into()?,)*
                 },
             }
         }
@@ -116,10 +122,6 @@ pub fn derive_from_query_result(input: TokenStream) -> TokenStream {
         .filter(TypeComplexity::complex_ref)
         .map(|x| &x.ty)
         .collect();
-
-    let ident = &input.ident;
-    let visibility = &input.vis;
-    let mapping_ident = format_ident!("{ident}Mapping");
 
     let set_mapping = {
         let mut set_child_mapping = proc_macro2::TokenStream::new();
@@ -192,7 +194,9 @@ pub fn derive_from_query_result(input: TokenStream) -> TokenStream {
 
                 fn from_mapping_and_row(mapping: &Self::Mapping, row: &mut std::vec::Vec<mysql_connector::types::Value>) -> std::result::Result<Self, mysql_connector::error::ParseError> {
                     Ok(Self {
-                        #(#simple_field_names: row[mapping.#simple_field_names.ok_or(mysql_connector::error::ParseError::MissingField(stringify!(#simple_field_names)))?].take().try_into()?,)*
+                        #(#simple_field_names: row[mapping.#simple_field_names.ok_or(mysql_connector::error::ParseError::MissingField(
+                            concat!(stringify!(#ident), ".", stringify!(#simple_field_names))
+                        ))?].take().try_into()?,)*
                         #set_struct_fields
                         #(#complex_field_names: <#complex_field_types>::from_mapping_and_row(&mapping.#complex_field_names, row)?,)*
                     })

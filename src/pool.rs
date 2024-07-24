@@ -72,21 +72,21 @@ impl<T> SyncPoolContent for Vec<T> {
     }
 }
 
-pub struct AsyncPool<T: AsyncPoolContent, const N: usize> {
+pub struct AsyncPool<T: AsyncPoolContent<C>, C, const N: usize> {
     ctx: T::Ctx,
     items: AtomicUsize,
     pool: ArrayQueue<T>,
     wakers: SegQueue<Waker>,
 }
 
-impl<T: AsyncPoolContent, const N: usize> Pool<T> for AsyncPool<T, N> {
+impl<T: AsyncPoolContent<C>, C, const N: usize> Pool<T> for AsyncPool<T, C, N> {
     fn put(&self, value: T) {
         // As we won't create too many items and this trait isn't public, the pool won't be full
         let _ = self.pool.push(value);
     }
 }
 
-impl<T: AsyncPoolContent, const N: usize> AsyncPool<T, N> {
+impl<T: AsyncPoolContent<C>, C, const N: usize> AsyncPool<T, C, N> {
     pub fn new(ctx: T::Ctx) -> Self {
         Self {
             ctx,
@@ -96,7 +96,7 @@ impl<T: AsyncPoolContent, const N: usize> AsyncPool<T, N> {
         }
     }
 
-    pub fn get(&self) -> PoolTake<'_, T, N> {
+    pub fn get(&self) -> PoolTake<'_, T, C, N> {
         PoolTake {
             pool: self,
             add: None,
@@ -105,26 +105,29 @@ impl<T: AsyncPoolContent, const N: usize> AsyncPool<T, N> {
     }
 }
 
-pub struct PoolTake<'a, T: AsyncPoolContent, const N: usize> {
-    pool: &'a AsyncPool<T, N>,
-    add: Option<Pin<Box<dyn Future<Output = T> + 'a>>>,
+#[allow(clippy::type_complexity)]
+#[must_use = "futures do nothing unless you `.await` or poll them"]
+pub struct PoolTake<'a, T: AsyncPoolContent<C>, C, const N: usize> {
+    pool: &'a AsyncPool<T, C, N>,
+    add: Option<Pin<Box<dyn Future<Output = Result<T, T::Error>> + 'a>>>,
     waker_added: bool,
 }
 
-impl<'a, T: AsyncPoolContent, const N: usize> PoolTake<'a, T, N> {
+impl<'a, T: AsyncPoolContent<C>, C, const N: usize> PoolTake<'a, T, C, N> {
     fn poll_add(&mut self, cx: &mut task::Context<'_>) -> Option<Poll<<Self as Future>::Output>> {
-        self.add.as_mut().map(|add| match add.as_mut().poll(cx) {
-            Poll::Ready(item) => Poll::Ready(PoolItem {
-                item: ManuallyDrop::new(item),
-                pool: self.pool,
-            }),
-            Poll::Pending => Poll::Pending,
+        self.add.as_mut().map(|add| {
+            add.as_mut().poll(cx).map(|res| {
+                res.map(|item| PoolItem {
+                    item: ManuallyDrop::new(item),
+                    pool: self.pool,
+                })
+            })
         })
     }
 }
 
-impl<'a, T: AsyncPoolContent, const N: usize> Future for PoolTake<'a, T, N> {
-    type Output = PoolItem<'a, T>;
+impl<'a, T: AsyncPoolContent<C>, C, const N: usize> Future for PoolTake<'a, T, C, N> {
+    type Output = Result<PoolItem<'a, T>, T::Error>;
 
     fn poll(self: std::pin::Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<Self::Output> {
         let this = self.get_mut();
@@ -133,10 +136,10 @@ impl<'a, T: AsyncPoolContent, const N: usize> Future for PoolTake<'a, T, N> {
             return res;
         }
         match pool.pool.pop() {
-            Some(item) => Poll::Ready(PoolItem {
+            Some(item) => Poll::Ready(Ok(PoolItem {
                 item: ManuallyDrop::new(item),
                 pool,
-            }),
+            })),
             None => {
                 let item_count = pool.items.load(Ordering::Relaxed);
                 if item_count < N {
@@ -169,9 +172,11 @@ impl<'a, T: AsyncPoolContent, const N: usize> Future for PoolTake<'a, T, N> {
     }
 }
 
-pub trait AsyncPoolContent: Sized {
+pub trait AsyncPoolContent<T>: Sized {
     type Ctx: fmt::Debug;
-    fn new<'a>(ctx: &'a Self::Ctx) -> Pin<Box<dyn Future<Output = Self> + 'a>>;
+    type Error: fmt::Debug;
+    fn new<'a>(ctx: &'a Self::Ctx)
+        -> Pin<Box<dyn Future<Output = Result<Self, Self::Error>> + 'a>>;
 }
 
 pub struct PoolItem<'a, T> {
