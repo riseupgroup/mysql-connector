@@ -92,3 +92,9 @@ impl SimpleValue for Value {
         self
     }
 }
+
+impl SimpleValue for &Value {
+    fn value(&self) -> &Value {
+        self
+    }
+}

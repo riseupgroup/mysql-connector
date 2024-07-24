@@ -28,7 +28,7 @@ lazy_static::lazy_static! {
 }
 
 use {
-    crate::pool::{SyncPool, VecPoolCtx},
+    crate::pool::{AsyncPoolContent, AsyncPoolContentError, SyncPool, VecPoolCtx},
     std::{fmt, sync::Arc},
     tokio::io::{AsyncRead, AsyncWrite},
 };
@@ -93,9 +93,12 @@ pub trait Stream: Sized + StreamRequirements {
     async fn connect(data: &Self::Options) -> Result<Self, std::io::Error>;
 }
 
-impl<T: Stream> crate::pool::AsyncPoolContent<T> for Connection {
-    type Ctx = Arc<ConnectionOptions<T>>;
+impl AsyncPoolContentError for Connection {
     type Error = crate::Error;
+}
+
+impl<T: Stream> AsyncPoolContent<T> for Connection {
+    type Ctx = Arc<ConnectionOptions<T>>;
 
     fn new<'a>(
         ctx: &'a Self::Ctx,

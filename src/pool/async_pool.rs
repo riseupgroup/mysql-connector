@@ -1,76 +1,14 @@
 use {
+    super::{AsyncPoolContent, AsyncPoolGetFuture, AsyncPoolTrait, PoolItem, PoolPut},
     crossbeam::queue::{ArrayQueue, SegQueue},
     std::{
-        fmt,
         future::Future,
         mem::ManuallyDrop,
-        ops,
         pin::Pin,
         sync::atomic::{AtomicUsize, Ordering},
         task::{self, Poll, Waker},
     },
 };
-
-trait Pool<T> {
-    fn put(&self, value: T);
-}
-
-pub struct SyncPool<T: SyncPoolContent, const N: usize> {
-    ctx: T::Ctx,
-    pool: ArrayQueue<T>,
-}
-
-impl<T: SyncPoolContent, const N: usize> Pool<T> for SyncPool<T, N> {
-    fn put(&self, mut value: T) {
-        // if there are too many items, they will be dropped
-        value.reset(&self.ctx);
-        let _ = self.pool.push(value);
-    }
-}
-
-impl<T: SyncPoolContent, const N: usize> SyncPool<T, N> {
-    pub fn new(ctx: T::Ctx) -> Self {
-        Self {
-            ctx,
-            pool: ArrayQueue::new(N),
-        }
-    }
-
-    pub fn get(&self) -> PoolItem<'_, T> {
-        let item = self.pool.pop().unwrap_or_else(|| T::new(&self.ctx));
-        PoolItem {
-            item: ManuallyDrop::new(item),
-            pool: self,
-        }
-    }
-}
-
-pub trait SyncPoolContent: Sized {
-    type Ctx: fmt::Debug;
-    fn new(ctx: &Self::Ctx) -> Self;
-    fn reset(&mut self, ctx: &Self::Ctx);
-}
-
-#[derive(Debug)]
-pub struct VecPoolCtx {
-    pub size_cap: usize,
-    pub init_size: usize,
-}
-
-impl<T> SyncPoolContent for Vec<T> {
-    type Ctx = VecPoolCtx;
-
-    fn new(ctx: &Self::Ctx) -> Self {
-        Self::with_capacity(ctx.init_size)
-    }
-
-    fn reset(&mut self, ctx: &Self::Ctx) {
-        unsafe {
-            self.set_len(0);
-        }
-        self.shrink_to(ctx.size_cap);
-    }
-}
 
 pub struct AsyncPool<T: AsyncPoolContent<C>, C, const N: usize> {
     ctx: T::Ctx,
@@ -79,9 +17,9 @@ pub struct AsyncPool<T: AsyncPoolContent<C>, C, const N: usize> {
     wakers: SegQueue<Waker>,
 }
 
-impl<T: AsyncPoolContent<C>, C, const N: usize> Pool<T> for AsyncPool<T, C, N> {
+impl<T: AsyncPoolContent<C>, C, const N: usize> PoolPut<T> for AsyncPool<T, C, N> {
     fn put(&self, value: T) {
-        // As we won't create too many items and this trait isn't public, the pool won't be full
+        // As we won't create too many items, the pool won't be full
         let _ = self.pool.push(value);
     }
 }
@@ -95,13 +33,15 @@ impl<T: AsyncPoolContent<C>, C, const N: usize> AsyncPool<T, C, N> {
             wakers: SegQueue::new(),
         }
     }
+}
 
-    pub fn get(&self) -> PoolTake<'_, T, C, N> {
-        PoolTake {
+impl<T: AsyncPoolContent<C>, C, const N: usize> AsyncPoolTrait<T> for AsyncPool<T, C, N> {
+    fn get(&self) -> Pin<Box<AsyncPoolGetFuture<'_, T>>> {
+        Box::pin(PoolTake {
             pool: self,
             add: None,
             waker_added: false,
-        }
+        })
     }
 }
 
@@ -169,74 +109,5 @@ impl<'a, T: AsyncPoolContent<C>, C, const N: usize> Future for PoolTake<'a, T, C
                 Poll::Pending
             }
         }
-    }
-}
-
-pub trait AsyncPoolContent<T>: Sized {
-    type Ctx: fmt::Debug;
-    type Error: fmt::Debug;
-    fn new<'a>(ctx: &'a Self::Ctx)
-        -> Pin<Box<dyn Future<Output = Result<Self, Self::Error>> + 'a>>;
-}
-
-pub struct PoolItem<'a, T> {
-    item: ManuallyDrop<T>,
-    pool: &'a dyn Pool<T>,
-}
-
-impl<T> ops::Deref for PoolItem<'_, T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        &self.item
-    }
-}
-
-impl<T> ops::DerefMut for PoolItem<'_, T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.item
-    }
-}
-
-impl<T> AsRef<T> for PoolItem<'_, T> {
-    fn as_ref(&self) -> &T {
-        &self.item
-    }
-}
-
-impl AsRef<[u8]> for PoolItem<'_, Vec<u8>> {
-    fn as_ref(&self) -> &[u8] {
-        &self.item
-    }
-}
-
-impl<T> AsMut<T> for PoolItem<'_, T> {
-    fn as_mut(&mut self) -> &mut T {
-        &mut self.item
-    }
-}
-
-impl AsMut<[u8]> for PoolItem<'_, Vec<u8>> {
-    fn as_mut(&mut self) -> &mut [u8] {
-        &mut self.item
-    }
-}
-
-impl<T> ops::Drop for PoolItem<'_, T> {
-    fn drop(&mut self) {
-        let item = unsafe { <ManuallyDrop<T>>::take(&mut self.item) };
-        self.pool.put(item);
-    }
-}
-
-impl<T: fmt::Debug> fmt::Debug for PoolItem<'_, T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.item.fmt(f)
-    }
-}
-
-impl<T: fmt::Display> fmt::Display for PoolItem<'_, T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.item.fmt(f)
     }
 }

@@ -1,17 +1,17 @@
 use {
-    crate::{error::Error, Connection},
+    crate::{error::Error, pool::AsyncPoolTrait, Connection},
     std::{cmp, fmt, future::Future, pin::Pin},
 };
 
 pub trait Migration {
     fn name(&self) -> &'static str;
     fn up<'a>(
-        &self,
-        conn: &'a mut Connection,
+        &'a self,
+        pool: &'a dyn AsyncPoolTrait<Connection>,
     ) -> Pin<Box<dyn Future<Output = Result<(), Error>> + 'a>>;
     fn down<'a>(
-        &self,
-        conn: &'a mut Connection,
+        &'a self,
+        pool: &'a dyn AsyncPoolTrait<Connection>,
     ) -> Pin<Box<dyn Future<Output = Result<(), Error>> + 'a>>;
 }
 

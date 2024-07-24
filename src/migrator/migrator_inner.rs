@@ -1,22 +1,26 @@
 use {
     super::{MigrationList, Version},
-    crate::{error::Error, migrator::model::MigrationModel, types::Value, Connection},
+    crate::{
+        error::Error, migrator::model::MigrationModel, pool::AsyncPoolTrait, types::Value,
+        Connection,
+    },
     std::collections::HashMap,
 };
 
 pub struct Migrator<'a> {
-    conn: &'a mut Connection,
+    pool: &'a dyn AsyncPoolTrait<Connection>,
     migrations: &'a [MigrationList],
     applied: HashMap<Version, Vec<String>>,
 }
 
 impl<'a> Migrator<'a> {
     pub async fn new(
-        conn: &'a mut Connection,
+        pool: &'a dyn AsyncPoolTrait<Connection>,
         migrations: &'a [MigrationList],
     ) -> Result<Self, Error> {
         debug_assert!(MigrationList::ordered(migrations));
 
+        let mut conn = pool.get().await?;
         let mut migrations_table = conn.query::<Vec<Value>>("select 1 from `information_schema`.`PARTITIONS` where `TABLE_NAME` = \"migrations\" and `TABLE_SCHEMA` = DATABASE()").await?;
         if migrations_table.collect().await?.is_empty() {
             conn.execute_query(
@@ -57,7 +61,7 @@ impl<'a> Migrator<'a> {
             Self::insert_applied(&mut applied, row.version, row.name);
         }
         Ok(Self {
-            conn,
+            pool,
             migrations,
             applied,
         })
@@ -103,13 +107,13 @@ impl<'a> Migrator<'a> {
                         )
                         .is_none()
                         {
-                            migration.up(self.conn).await?;
+                            migration.up(self.pool).await?;
                             Self::insert_applied(
                                 &mut self.applied,
                                 migration_list.version,
                                 migration.name().to_owned(),
                             );
-                            self.conn.execute_query(&format!("insert into `migrations` (`version_0`, `version_1`, `version_2`, `name`) values ({}, {}, {}, \"{}\")", migration_list.version.0, migration_list.version.1, migration_list.version.2, migration.name())).await?;
+                            self.pool.get().await?.execute_query(&format!("insert into `migrations` (`version_0`, `version_1`, `version_2`, `name`) values ({}, {}, {}, \"{}\")", migration_list.version.0, migration_list.version.1, migration_list.version.2, migration.name())).await?;
                         }
                     }
                 }
@@ -127,9 +131,9 @@ impl<'a> Migrator<'a> {
                         &migration_list.version,
                         migration.name(),
                     ) {
-                        migration.down(self.conn).await?;
+                        migration.down(self.pool).await?;
                         applied.swap_remove(index);
-                        self.conn.execute_query(&format!("delete from `migrations` where `version_0` = {} and `version_1` = {} and `version_2` = {} and `name` = \"{}\"", migration_list.version.0, migration_list.version.1, migration_list.version.2, migration.name())).await?;
+                        self.pool.get().await?.execute_query(&format!("delete from `migrations` where `version_0` = {} and `version_1` = {} and `version_2` = {} and `name` = \"{}\"", migration_list.version.0, migration_list.version.1, migration_list.version.2, migration.name())).await?;
                     }
                 }
             }
@@ -149,9 +153,9 @@ impl<'a> Migrator<'a> {
                 if let Some((applied, index)) =
                     Self::get_applied(&mut self.applied, &migration_list.version, migration.name())
                 {
-                    migration.down(self.conn).await?;
+                    migration.down(self.pool).await?;
                     applied.swap_remove(index);
-                    self.conn.execute_query(&format!("delete from `migrations` where `version_0` = {} and `version_1` = {} and `version_2` = {} and `name` = \"{}\"", migration_list.version.0, migration_list.version.1, migration_list.version.2, migration.name())).await?;
+                    self.pool.get().await?.execute_query(&format!("delete from `migrations` where `version_0` = {} and `version_1` = {} and `version_2` = {} and `name` = \"{}\"", migration_list.version.0, migration_list.version.1, migration_list.version.2, migration.name())).await?;
                     return Ok(true);
                 }
             }

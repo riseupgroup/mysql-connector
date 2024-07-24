@@ -18,27 +18,27 @@ macro_rules! simple_migration {
             }
 
             fn up<'a>(
-                &self,
-                conn: &'a mut mysql_connector::Connection,
+                &'a self,
+                pool: &'a dyn mysql_connector::pool::AsyncPoolTrait<mysql_connector::Connection>,
             ) -> std::pin::Pin<
                 Box<
                     dyn std::future::Future<Output = Result<(), mysql_connector::error::Error>>
                         + 'a,
                 >,
             > {
-                Box::pin(async { conn.execute_query($up).await.map(|_| {}) })
+                Box::pin(async { pool.get().await?.execute_query($up).await.map(|_| {}) })
             }
 
             fn down<'a>(
-                &self,
-                conn: &'a mut mysql_connector::Connection,
+                &'a self,
+                pool: &'a dyn mysql_connector::pool::AsyncPoolTrait<mysql_connector::Connection>,
             ) -> std::pin::Pin<
                 Box<
                     dyn std::future::Future<Output = Result<(), mysql_connector::error::Error>>
                         + 'a,
                 >,
             > {
-                Box::pin(async { conn.execute_query($down).await.map(|_| {}) })
+                Box::pin(async { pool.get().await?.execute_query($down).await.map(|_| {}) })
             }
         }
     };
