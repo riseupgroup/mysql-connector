@@ -3,7 +3,7 @@ members = ["macros"]
 
 [package]
 name = "mysql-connector"
-version = "0.0.2"
+version = "0.0.3"
 edition = "2021"
 description = "Simple MySQL connector that allows exchanging the underlying connection"
 license = "MIT"
@@ -24,7 +24,7 @@ time = ["tokio/time"]
 serde = ["dep:serde"]
 
 [dependencies]
-mysql-connector-macros = { path = "./macros", version = "=0.0.2" }
+mysql-connector-macros = { path = "./macros", version = "=0.0.3" }
 bitflags = "2.5.0"
 btoi = "0.4.3"
 bytes = "1.6.0"
