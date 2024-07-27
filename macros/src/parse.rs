@@ -30,14 +30,15 @@ pub struct Model {
     pub fields: Vec<Field>,
 }
 
-pub fn parse(input: DeriveInput, error: &mut Error) -> Option<Model> {
+pub fn parse(input: &DeriveInput) -> Result<Model, syn::Error> {
     match &input.data {
-        Data::Enum(_) => error.add(
-            input.span(),
+        Data::Enum(_) => Err(syn::Error::new(
+            input.ident.span(),
             "mysql_connector does not support derive for enums",
-        ),
+        )),
         Data::Struct(data) => match &data.fields {
             Fields::Named(fields_named) => {
+                let mut error = Error::empty();
                 let mut table = None;
                 for attr in &input.attrs {
                     if attr.path().is_ident("table") {
@@ -45,10 +46,8 @@ pub fn parse(input: DeriveInput, error: &mut Error) -> Option<Model> {
                             error.add(attr.span(), "you can't specify multiple `table` attributes");
                         } else {
                             match &attr.meta {
-                                Meta::Path(path) => {
-                                    table = Some(path.to_token_stream().to_string())
-                                }
-                                _ => error.add(attr.meta.span(), "expected identifier"),
+                                Meta::List(list) => table = Some(list.tokens.to_string()),
+                                _ => error.add(attr.meta.span(), "expected table name"),
                             }
                         }
                     }
@@ -117,29 +116,29 @@ pub fn parse(input: DeriveInput, error: &mut Error) -> Option<Model> {
                         ),
                     }
                 }
-                if error.is_none() {
-                    return Some(Model {
-                        ident: input.ident,
+                match error.error() {
+                    Some(err) => Err(err),
+                    None => Ok(Model {
+                        ident: input.ident.clone(),
                         table,
                         fields,
-                    });
+                    })
                 }
             }
-            Fields::Unnamed(_) => error.add(
-                input.span(),
+            Fields::Unnamed(_) => Err(syn::Error::new(
+                input.ident.span(),
                 "mysql_connector does not support derive for unnamed fields",
-            ),
-            Fields::Unit => error.add(
-                input.span(),
+            )),
+            Fields::Unit => Err(syn::Error::new(
+                input.ident.span(),
                 "mysql_connector does not support derive for unit fields",
-            ),
+            )),
         },
-        Data::Union(_) => error.add(
-            input.span(),
+        Data::Union(_) => Err(syn::Error::new(
+            input.ident.span(),
             "mysql_connector does not support derive for unions",
-        ),
+        )),
     }
-    None
 }
 
 pub struct NamedField {
