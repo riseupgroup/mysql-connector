@@ -18,6 +18,10 @@ impl Error {
         Self(None)
     }
 
+    pub fn is_none(&self) -> bool {
+        self.0.is_none()
+    }
+
     pub fn add<T: fmt::Display>(&mut self, span: Span, message: T) {
         let error = syn::Error::new(span, message);
         match &mut self.0 {

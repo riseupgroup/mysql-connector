@@ -1,13 +1,146 @@
 use {
     crate::Error,
     proc_macro2::Span,
+    quote::ToTokens,
     std::collections::HashMap,
     syn::{
-        punctuated::Punctuated, spanned::Spanned, token, Attribute, Data, Expr, ExprLit,
-        GenericArgument, Ident, Lit, Member, MetaNameValue, Path, PathArguments, PathSegment,
-        Token, Type, TypePath,
+        punctuated::Punctuated, spanned::Spanned, token, Attribute, Data, DeriveInput, Expr,
+        ExprLit, Fields, GenericArgument, Ident, Lit, Member, Meta, MetaNameValue, Path,
+        PathArguments, PathSegment, Token, Type, TypePath,
     },
 };
+
+pub enum FieldType {
+    Simple,
+    /// (auto_increment)
+    Primary(bool),
+    Struct,
+    Complex,
+}
+
+pub struct Field {
+    pub ident: Ident,
+    pub path: TypePath,
+    pub r#type: FieldType,
+}
+
+pub struct Model {
+    pub ident: Ident,
+    pub table: Option<String>,
+    pub fields: Vec<Field>,
+}
+
+pub fn parse(input: DeriveInput, error: &mut Error) -> Option<Model> {
+    match &input.data {
+        Data::Enum(_) => error.add(
+            input.span(),
+            "mysql_connector does not support derive for enums",
+        ),
+        Data::Struct(data) => match &data.fields {
+            Fields::Named(fields_named) => {
+                let mut table = None;
+                for attr in &input.attrs {
+                    if attr.path().is_ident("table") {
+                        if table.is_some() {
+                            error.add(attr.span(), "you can't specify multiple `table` attributes");
+                        } else {
+                            match &attr.meta {
+                                Meta::Path(path) => {
+                                    table = Some(path.to_token_stream().to_string())
+                                }
+                                _ => error.add(attr.meta.span(), "expected identifier"),
+                            }
+                        }
+                    }
+                }
+
+                let mut fields = Vec::with_capacity(fields_named.named.len());
+                let mut primary_found = false;
+
+                'fields: for field in &fields_named.named {
+                    match &field.ty {
+                        Type::Path(path) => {
+                            let mut primary = (false, false); // primary, auto_increment
+                            let mut r#struct: Option<Span> = None;
+
+                            for attr in &field.attrs {
+                                if attr.path().is_ident("primary") {
+                                    if primary_found {
+                                        error.add(attr.span(), "mysql_connector does not support composite primary keys");
+                                    } else {
+                                        primary_found = true;
+                                        primary.0 = true;
+                                        match &attr.meta {
+                                            Meta::Path(path) if path.is_ident("AutoIncrement") => {
+                                                primary.1 = true
+                                            }
+                                            _ => error.add(
+                                                attr.meta.span(),
+                                                "expected identifier `AutoIncrement`",
+                                            ),
+                                        }
+                                    }
+                                } else if attr.path().is_ident("struct") {
+                                    if r#struct.is_some() {
+                                        error.add(
+                                            attr.span(),
+                                            "you can't specify multiple `struct` attributes",
+                                        );
+                                    } else {
+                                        r#struct = Some(attr.span());
+                                    }
+                                }
+                            }
+
+                            let field_type = if let Some(span) = r#struct {
+                                if primary.0 {
+                                    error.add(span, "primary key can't be a struct");
+                                    continue 'fields;
+                                }
+                                FieldType::Struct
+                            } else {
+                                match primary.0 {
+                                    true => FieldType::Primary(primary.1),
+                                    false => FieldType::Simple,
+                                }
+                            };
+
+                            fields.push(Field {
+                                ident: field.ident.clone().unwrap(),
+                                path: path.clone(),
+                                r#type: field_type,
+                            });
+                        }
+                        _ => error.add(
+                            field.ty.span(),
+                            "mysql_connector does not support this type",
+                        ),
+                    }
+                }
+                if error.is_none() {
+                    return Some(Model {
+                        ident: input.ident,
+                        table,
+                        fields,
+                    });
+                }
+            }
+            Fields::Unnamed(_) => error.add(
+                input.span(),
+                "mysql_connector does not support derive for unnamed fields",
+            ),
+            Fields::Unit => error.add(
+                input.span(),
+                "mysql_connector does not support derive for unit fields",
+            ),
+        },
+        Data::Union(_) => error.add(
+            input.span(),
+            "mysql_connector does not support derive for unions",
+        ),
+    }
+    None
+}
 
 pub struct NamedField {
     pub complexity: TypeComplexity,
@@ -26,7 +159,7 @@ pub fn parse_fields(
     match data {
         Data::Enum(_) => error.add(span, "mysql_connector does not support derive for enums"),
         Data::Struct(data) => match &data.fields {
-            syn::Fields::Named(fields_named) => {
+            Fields::Named(fields_named) => {
                 for field in &fields_named.named {
                     match &field.ty {
                         Type::Path(path) => {
@@ -44,11 +177,11 @@ pub fn parse_fields(
                     }
                 }
             }
-            syn::Fields::Unnamed(_) => error.add(
+            Fields::Unnamed(_) => error.add(
                 span,
                 "mysql_connector does not support derive for unnamed fields",
             ),
-            syn::Fields::Unit => error.add(
+            Fields::Unit => error.add(
                 span,
                 "mysql_connector does not support derive for unit fields",
             ),
