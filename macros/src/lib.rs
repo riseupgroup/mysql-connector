@@ -3,7 +3,7 @@ extern crate proc_macro;
 mod parse;
 
 use {
-    parse::{parse_attr, parse_fields, NamedField, TypeComplexity},
+    parse::{parse, parse_attr, parse_fields, NamedField, TypeComplexity},
     proc_macro::TokenStream,
     proc_macro2::Span,
     quote::{format_ident, quote},
@@ -42,36 +42,32 @@ impl Error {
     }
 }
 
-#[proc_macro_derive(ModelData, attributes(mysql_connector))]
+#[proc_macro_derive(ModelData, attributes(table))]
 pub fn derive_model_data(input: TokenStream) -> TokenStream {
-    let mut error = Error::empty();
     let input = parse_macro_input!(input as DeriveInput);
 
-    let (attr_span, attrs, _) = parse_attr(&mut error, input.ident.span(), &input.attrs);
-    if let Some(span) = attr_span {
-        if !attrs.contains_key("table") {
-            error.add(span, "table needed (#[mysql_connector(table = \"...\")]");
-        }
+    match parse(&input) {
+        Ok(model) => {
+            match model.table {
+                Some(table) => {
+                    let ident = &model.ident;
+                    let table_with_point = table.to_owned() + ".";
+                    quote! {
+                        impl mysql_connector::model::ModelData for #ident {
+                            const TABLE: &'static str = #table;
+                            const TABLE_WITH_POINT: &'static str = #table_with_point;
+                        }
+                    }
+                    .into()
+                }
+                None => syn::Error::new(input.ident.span(), "missing `table` attribute (`#[table(table_name)]`").into_compile_error().into()
+            }
+        },
+        Err(err) => err.into_compile_error().into()
     }
-
-    if let Some(error) = error.error() {
-        return error.into_compile_error().into();
-    }
-
-    let ident = &input.ident;
-    let table = attrs.get("table").unwrap();
-    let table_with_point = table.to_owned() + ".";
-
-    quote! {
-        impl mysql_connector::model::ModelData for #ident {
-            const TABLE: &'static str = #table;
-            const TABLE_WITH_POINT: &'static str = #table_with_point;
-        }
-    }
-    .into()
 }
 
-#[proc_macro_derive(FromQueryResult)]
+#[proc_macro_derive(FromQueryResult, attributes(mysql_connector))]
 pub fn derive_from_query_result(input: TokenStream) -> TokenStream {
     let mut error = Error::empty();
     let input = parse_macro_input!(input as DeriveInput);
