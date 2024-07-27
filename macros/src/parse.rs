@@ -1,7 +1,6 @@
 use {
     crate::Error,
     proc_macro2::Span,
-    quote::ToTokens,
     std::collections::HashMap,
     syn::{
         punctuated::Punctuated, spanned::Spanned, token, Attribute, Data, DeriveInput, Expr,
@@ -61,6 +60,7 @@ pub fn parse(input: &DeriveInput) -> Result<Model, syn::Error> {
                         Type::Path(path) => {
                             let mut primary = (false, false); // primary, auto_increment
                             let mut r#struct: Option<Span> = None;
+                            let mut relation: Option<Span> = None;
 
                             for attr in &field.attrs {
                                 if attr.path().is_ident("primary") {
@@ -88,6 +88,15 @@ pub fn parse(input: &DeriveInput) -> Result<Model, syn::Error> {
                                     } else {
                                         r#struct = Some(attr.span());
                                     }
+                                } else if attr.path().is_ident("relation") {
+                                    if relation.is_some() {
+                                        error.add(
+                                            attr.span(),
+                                            "you can't specify multiple `relation` attributes",
+                                        );
+                                    } else {
+                                        relation = Some(attr.span());
+                                    }
                                 }
                             }
 
@@ -96,7 +105,17 @@ pub fn parse(input: &DeriveInput) -> Result<Model, syn::Error> {
                                     error.add(span, "primary key can't be a struct");
                                     continue 'fields;
                                 }
+                                if relation.is_some() {
+                                    error.add(span, "relation can't be a struct");
+                                    continue 'fields;
+                                }
                                 FieldType::Struct
+                            } else if let Some(span) = relation {
+                                if primary.0 {
+                                    error.add(span, "primary key can't be a relation");
+                                    continue 'fields;
+                                }
+                                FieldType::Complex
                             } else {
                                 match primary.0 {
                                     true => FieldType::Primary(primary.1),
