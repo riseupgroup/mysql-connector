@@ -3,12 +3,12 @@ extern crate proc_macro;
 mod parse;
 
 use {
-    parse::{parse, parse_attr, parse_fields, Field, FieldType, TypeComplexity},
+    parse::{parse, parse_attr, parse_fields, Field, FieldType},
     proc_macro::TokenStream,
     proc_macro2::Span,
     quote::{format_ident, quote},
     std::fmt,
-    syn::{parse_macro_input, DeriveInput, Ident, LitStr, Type},
+    syn::{parse_macro_input, DeriveInput, Ident},
 };
 
 struct Error(Option<syn::Error>);
@@ -318,58 +318,58 @@ pub fn derive_active_model(input: TokenStream) -> TokenStream {
     .into()
 }
 
-#[proc_macro_derive(IntoQuery)]
+#[proc_macro_derive(IntoQuery, attributes(simple_struct, relation))]
 pub fn derive_into_query(input: TokenStream) -> TokenStream {
-    let mut error = Error::empty();
     let input = parse_macro_input!(input as DeriveInput);
 
-    let (_, _, types) = parse_attr(&mut error, input.ident.span(), &input.attrs);
-    let fields = parse_fields(&mut error, input.ident.span(), &input.data, &types);
+    let model = match parse(&input) {
+        Ok(model) => model,
+        Err(err) => return err.into_compile_error().into(),
+    };
 
-    if let Some(error) = error.error() {
-        return error.into_compile_error().into();
-    }
-
-    let mut simple_field_names: Vec<LitStr> = fields
-        .iter()
-        .filter(TypeComplexity::simple_ref)
-        .map(|x| LitStr::new(&x.ident.to_string(), x.ident.span()))
-        .collect();
-    for field in &fields {
-        if let TypeComplexity::Struct(r#struct) = &field.complexity {
-            let mapping_names = r#struct
-                .fields
-                .iter()
-                .map(|x| LitStr::new(&format!("{}_{}", field.ident, x.1), field.ident.span()));
-            simple_field_names.extend(mapping_names);
+    let mut columns = proc_macro2::TokenStream::new();
+    for Field {
+        ident: field_ident,
+        path,
+        r#type,
+    } in model.fields
+    {
+        match r#type {
+            FieldType::Simple | FieldType::Primary(_) => {
+                let name = field_ident.to_string();
+                columns.extend(Some(quote! {
+                    mysql_connector::model::QueryColumn::Column(#name),
+                }))
+            }
+            FieldType::Struct(struct_fields) => {
+                for (_, struct_field_name) in struct_fields {
+                    let mapping_name = format!("{}_{}", field_ident, struct_field_name);
+                    columns.extend(Some(
+                        quote! { mysql_connector::model::QueryColumn::Column(#mapping_name), },
+                    ));
+                }
+            }
+            FieldType::Complex => {
+                let name = field_ident.to_string();
+                columns.extend(Some(quote! {
+                    mysql_connector::model::QueryColumn::Reference(mysql_connector::model::QueryColumnReference {
+                        column: #name,
+                        table: <#path as mysql_connector::model::ModelData>::TABLE,
+                        key: <#path as mysql_connector::model::Model>::PRIMARY,
+                        columns: <#path as mysql_connector::model::IntoQuery>::COLUMNS,
+                    }),
+                }))
+            }
         }
     }
-    let complex_field_names: &Vec<LitStr> = &fields
-        .iter()
-        .filter(TypeComplexity::complex_ref)
-        .map(|x| LitStr::new(&x.ident.to_string(), x.ident.span()))
-        .collect();
-    let complex_field_types: &Vec<&Type> = &fields
-        .iter()
-        .filter(TypeComplexity::complex_ref)
-        .map(|x| &x.ty)
-        .collect();
 
-    let ident = &input.ident;
-
+    let ident = &model.ident;
     quote! {
         impl mysql_connector::model::IntoQuery for #ident {
-            const COLUMNS: &'static [mysql_connector::model::QueryColumn] = &[
-                #(mysql_connector::model::QueryColumn::Column(#simple_field_names),)*
-                #(mysql_connector::model::QueryColumn::Reference(mysql_connector::model::QueryColumnReference {
-                    column: #complex_field_names,
-                    table: <#complex_field_types as mysql_connector::model::ModelData>::TABLE,
-                    key: <#complex_field_types as mysql_connector::model::Model>::PRIMARY,
-                    columns: <#complex_field_types as mysql_connector::model::IntoQuery>::COLUMNS,
-                }),)*
-            ];
+            const COLUMNS: &'static [mysql_connector::model::QueryColumn] = &[#columns];
         }
-    }.into()
+    }
+    .into()
 }
 
 #[proc_macro_derive(Model)]
