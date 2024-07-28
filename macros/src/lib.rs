@@ -3,7 +3,7 @@ extern crate proc_macro;
 mod parse;
 
 use {
-    parse::{parse, parse_attr, parse_fields, NamedField, TypeComplexity},
+    parse::{parse, parse_attr, parse_fields, Field, FieldType, NamedField, TypeComplexity},
     proc_macro::TokenStream,
     proc_macro2::Span,
     quote::{format_ident, quote},
@@ -16,10 +16,6 @@ struct Error(Option<syn::Error>);
 impl Error {
     pub fn empty() -> Self {
         Self(None)
-    }
-
-    pub fn is_none(&self) -> bool {
-        self.0.is_none()
     }
 
     pub fn add<T: fmt::Display>(&mut self, span: Span, message: T) {
@@ -206,134 +202,104 @@ pub fn derive_from_query_result(input: TokenStream) -> TokenStream {
     }.into()
 }
 
-#[proc_macro_derive(ActiveModel)]
+#[proc_macro_derive(ActiveModel, attributes(primary, simple_struct, relation))]
 pub fn derive_active_model(input: TokenStream) -> TokenStream {
-    let mut error = Error::empty();
     let input = parse_macro_input!(input as DeriveInput);
 
-    let (attr_span, attrs, types) = parse_attr(&mut error, input.ident.span(), &input.attrs);
-    let fields = parse_fields(&mut error, input.ident.span(), &input.data, &types);
-
-    let primary = match attr_span {
-        Some(span) => match attrs.get("primary") {
-            Some(primary) => match attrs.get("auto_increment") {
-                Some(ai) => Some((format_ident!("{primary}"), ai == "true")),
-                None => {
-                    error.add(
-                        span,
-                        "auto_increment needed (#[mysql_connector(auto_increment = \"...\")]",
-                    );
-                    None
-                }
-            },
-            None => None,
-        },
-        None => None,
+    let model = match parse(&input) {
+        Ok(model) => model,
+        Err(err) => return err.into_compile_error().into(),
     };
 
-    if let Some(error) = error.error() {
-        return error.into_compile_error().into();
-    }
+    let mut struct_fields = proc_macro2::TokenStream::new();
+    let mut into_values = quote! { let mut values = Vec::new(); };
+    let mut get_primary = quote! { None };
+    let mut into_active_model = proc_macro2::TokenStream::new();
+    for Field {
+        ident,
+        path,
+        r#type,
+    } in model.fields
+    {
+        let value_type = match r#type {
+            FieldType::Simple | FieldType::Primary(_) | FieldType::Struct(_) => "ActiveValue",
+            FieldType::Complex => "ActiveReference",
+        };
+        let value_type = Ident::new(value_type, Span::call_site());
 
-    let mut insert_struct_fields = proc_macro2::TokenStream::new();
-    for field in &fields {
-        if let TypeComplexity::Struct(r#struct) = &field.complexity {
-            let ident = &field.ident;
-            let idents = r#struct.fields.iter().map(|(x, _)| x);
-            let names = r#struct
-                .fields
-                .iter()
-                .map(|(_, x)| format_ident!("{ident}_{x}"));
-            insert_struct_fields = quote! {
-                #insert_struct_fields
-                match self.#ident {
-                    mysql_connector::model::ActiveValue::Unset =>(),
-                    mysql_connector::model::ActiveValue::Set(value) => {
-                        #(values.push(mysql_connector::model::NamedValue(stringify!(#names), value.#idents.try_into().map_err(Into::<mysql_connector::error::SerializeError>::into)?));)*
+        struct_fields.extend(Some(quote! {
+            pub #ident: mysql_connector::model::#value_type<#path>,
+        }));
+
+        let insert_value = match &r#type {
+            FieldType::Simple | FieldType::Primary(_) => {
+                quote! { self.#ident.insert_named_value(&mut values, stringify!(#ident))?; }
+            }
+            FieldType::Struct(fields) => {
+                let mut set = proc_macro2::TokenStream::new();
+                for (field_ident, name) in fields {
+                    let field_name = format_ident!("{ident}_{name}");
+                    set.extend(Some(quote! {
+                        values.push(mysql_connector::model::NamedValue(
+                            stringify!(#field_name),
+                            value.#field_ident.try_into().map_err(Into::<mysql_connector::error::SerializeError>::into)?,
+                        ));
+                    }));
+                }
+                quote! {
+                    match self.#ident {
+                        mysql_connector::model::ActiveValue::Unset => (),
+                        mysql_connector::model::ActiveValue::Set(value) => {
+                            #set
+                        }
                     }
+                }
+            }
+            FieldType::Complex => {
+                quote! { self.#ident.insert_named_value(&mut values, stringify!(#ident), conn).await?; }
+            }
+        };
+        into_values.extend(Some(insert_value));
+
+        if let FieldType::Primary(_) = r#type {
+            get_primary = quote! {
+                match self.#ident {
+                    mysql_connector::model::ActiveValue::Set(x) => Some(x.into()),
+                    mysql_connector::model::ActiveValue::Unset => None,
                 }
             };
         }
+
+        let into_active_model_field = match r#type {
+            FieldType::Primary(_) => quote! { #ident: mysql_connector::model::ActiveValue::Unset, },
+            FieldType::Simple | FieldType::Struct(_) => {
+                quote! { #ident: mysql_connector::model::ActiveValue::Set(self.#ident), }
+            }
+            FieldType::Complex => quote! {
+                #ident: mysql_connector::model::ActiveReference::Insert(
+                    <#path as mysql_connector::model::HasActiveModel>::into_active_model(self.#ident)
+                ),
+            },
+        };
+        into_active_model.extend(Some(into_active_model_field));
     }
+    into_values.extend(Some(quote! { Ok(values) }));
 
-    let simple_field_names: &Vec<&Ident> = &fields
-        .iter()
-        .filter(TypeComplexity::simple_ref)
-        .map(|x| &x.ident)
-        .collect();
-    let (simple_field_names_without_primary, set_primary) = primary
-        .as_ref()
-        .and_then(|(primary, auto_increment)| {
-            if *auto_increment {
-                let field_names = simple_field_names
-                    .iter()
-                    .filter(|x| **x != primary)
-                    .copied()
-                    .collect();
-                let set_primary = quote! {
-                    #primary: mysql_connector::model::ActiveValue::Unset,
-                };
-                Some((field_names, set_primary))
-            } else {
-                None
-            }
-        })
-        .unwrap_or_else(|| (simple_field_names.clone(), proc_macro2::TokenStream::new()));
-    let get_primary = match primary {
-        Some((primary, _)) => quote! {
-            match self.#primary {
-                mysql_connector::model::ActiveValue::Set(x) => Some(x.into()),
-                mysql_connector::model::ActiveValue::Unset => None,
-            }
-        },
-        None => quote! {None},
-    };
-
-    let simple_field_types: &Vec<&Type> = &fields
-        .iter()
-        .filter(TypeComplexity::simple_ref)
-        .map(|x| &x.ty)
-        .collect();
-    let struct_field_names: &Vec<&Ident> = &fields
-        .iter()
-        .filter(TypeComplexity::struct_ref)
-        .map(|x| &x.ident)
-        .collect();
-    let struct_field_types: &Vec<&Type> = &fields
-        .iter()
-        .filter(TypeComplexity::struct_ref)
-        .map(|x| &x.ty)
-        .collect();
-    let complex_field_names: &Vec<&Ident> = &fields
-        .iter()
-        .filter(TypeComplexity::complex_ref)
-        .map(|x| &x.ident)
-        .collect();
-    let complex_field_types: &Vec<&Type> = &fields
-        .iter()
-        .filter(TypeComplexity::complex_ref)
-        .map(|x| &x.ty)
-        .collect();
-
-    let ident = &input.ident;
-    let model_ident = format_ident!("{ident}ActiveModel");
+    let ident = &model.ident;
+    let active_ident = format_ident!("{ident}ActiveModel");
 
     quote! {
         const _: () = {
             #[derive(Debug, Default)]
-            pub struct #model_ident {
-                #(pub #simple_field_names: mysql_connector::model::ActiveValue<#simple_field_types>,)*
-                #(pub #struct_field_names: mysql_connector::model::ActiveValue<#struct_field_types>,)*
-                #(pub #complex_field_names: mysql_connector::model::ActiveReference<#complex_field_types>,)*
+            pub struct #active_ident {
+                #struct_fields
             }
 
-            impl mysql_connector::model::ActiveModel<#ident> for #model_ident {
-                async fn into_values(self, conn: &mut mysql_connector::Connection) -> Result<Vec<mysql_connector::model::NamedValue>, mysql_connector::error::Error> {
-                    let mut values = Vec::new();
-                    #(self.#simple_field_names.insert_named_value(&mut values, stringify!(#simple_field_names))?;)*
-                    #insert_struct_fields
-                    #(self.#complex_field_names.insert_named_value(&mut values, stringify!(#complex_field_names), conn).await?;)*
-                    Ok(values)
+            impl mysql_connector::model::ActiveModel<#ident> for #active_ident {
+                async fn into_values(self, conn: &mut mysql_connector::Connection) ->
+                    Result<Vec<mysql_connector::model::NamedValue>, mysql_connector::error::Error>
+                {
+                    #into_values
                 }
 
                 fn primary(&self) -> Option<mysql_connector::types::Value> {
@@ -342,19 +308,17 @@ pub fn derive_active_model(input: TokenStream) -> TokenStream {
             }
 
             impl mysql_connector::model::HasActiveModel for #ident {
-                type ActiveModel = #model_ident;
+                type ActiveModel = #active_ident;
 
                 fn into_active_model(self) -> Self::ActiveModel {
-                    #model_ident {
-                        #set_primary
-                        #(#simple_field_names_without_primary: mysql_connector::model::ActiveValue::Set(self.#simple_field_names_without_primary),)*
-                        #(#struct_field_names: mysql_connector::model::ActiveValue::Set(self.#struct_field_names),)*
-                        #(#complex_field_names: mysql_connector::model::ActiveReference::Insert(<#complex_field_types as mysql_connector::model::HasActiveModel>::into_active_model(self.#complex_field_names)),)*
+                    #active_ident {
+                        #into_active_model
                     }
                 }
             }
         };
-    }.into()
+    }
+    .into()
 }
 
 #[proc_macro_derive(IntoQuery)]
