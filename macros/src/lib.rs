@@ -3,7 +3,7 @@ extern crate proc_macro;
 mod parse;
 
 use {
-    parse::{parse, Field, FieldType},
+    parse::{parse, Field, FieldType, Model},
     proc_macro::TokenStream,
     proc_macro2::Span,
     quote::{format_ident, quote},
@@ -38,16 +38,8 @@ impl Error {
     }
 }
 
-#[proc_macro_derive(ModelData, attributes(table))]
-pub fn derive_model_data(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
-
-    let model = match parse(&input) {
-        Ok(model) => model,
-        Err(err) => return err.into_compile_error().into(),
-    };
-
-    match model.table {
+fn impl_model_data(model: &Model) -> TokenStream {
+    match &model.table {
         Some(table) => {
             let ident = &model.ident;
             let table_with_point = table.to_owned() + ".";
@@ -60,7 +52,7 @@ pub fn derive_model_data(input: TokenStream) -> TokenStream {
             .into()
         }
         None => syn::Error::new(
-            input.ident.span(),
+            model.ident.span(),
             "missing `table` attribute (`#[table(table_name)]`",
         )
         .into_compile_error()
@@ -68,15 +60,7 @@ pub fn derive_model_data(input: TokenStream) -> TokenStream {
     }
 }
 
-#[proc_macro_derive(FromQueryResult, attributes(simple_struct, relation))]
-pub fn derive_from_query_result(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
-
-    let model = match parse(&input) {
-        Ok(model) => model,
-        Err(err) => return err.into_compile_error().into(),
-    };
-
+fn impl_from_query_result(model: &Model) -> TokenStream {
     let visibility = &model.vis;
     let ident = &model.ident;
     let mapping_ident = format_ident!("{ident}Mapping");
@@ -89,7 +73,7 @@ pub fn derive_from_query_result(input: TokenStream) -> TokenStream {
         ident: field_ident,
         path,
         r#type,
-    } in model.fields
+    } in &model.fields
     {
         match &r#type {
             FieldType::Simple
@@ -199,15 +183,7 @@ pub fn derive_from_query_result(input: TokenStream) -> TokenStream {
     }.into()
 }
 
-#[proc_macro_derive(ActiveModel, attributes(primary, simple_struct, relation))]
-pub fn derive_active_model(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
-
-    let model = match parse(&input) {
-        Ok(model) => model,
-        Err(err) => return err.into_compile_error().into(),
-    };
-
+fn impl_active_model(model: &Model) -> TokenStream {
     let mut struct_fields = proc_macro2::TokenStream::new();
     let mut into_values = quote! { let mut values = Vec::new(); };
     let mut get_primary = quote! { None };
@@ -216,7 +192,7 @@ pub fn derive_active_model(input: TokenStream) -> TokenStream {
         ident,
         path,
         r#type,
-    } in model.fields
+    } in &model.fields
     {
         let value_type = match r#type {
             FieldType::Simple | FieldType::Primary(_) | FieldType::Struct(_) => "ActiveValue",
@@ -318,21 +294,13 @@ pub fn derive_active_model(input: TokenStream) -> TokenStream {
     .into()
 }
 
-#[proc_macro_derive(IntoQuery, attributes(simple_struct, relation))]
-pub fn derive_into_query(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
-
-    let model = match parse(&input) {
-        Ok(model) => model,
-        Err(err) => return err.into_compile_error().into(),
-    };
-
+fn impl_into_query(model: &Model) -> TokenStream {
     let mut columns = proc_macro2::TokenStream::new();
     for Field {
         ident: field_ident,
         path,
         r#type,
-    } in model.fields
+    } in &model.fields
     {
         match r#type {
             FieldType::Simple | FieldType::Primary(_) => {
@@ -370,6 +338,54 @@ pub fn derive_into_query(input: TokenStream) -> TokenStream {
         }
     }
     .into()
+}
+
+#[proc_macro_derive(ModelData, attributes(table))]
+pub fn derive_model_data(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+
+    let model = match parse(&input) {
+        Ok(model) => model,
+        Err(err) => return err.into_compile_error().into(),
+    };
+
+    impl_model_data(&model)
+}
+
+#[proc_macro_derive(FromQueryResult, attributes(simple_struct, relation))]
+pub fn derive_from_query_result(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+
+    let model = match parse(&input) {
+        Ok(model) => model,
+        Err(err) => return err.into_compile_error().into(),
+    };
+
+    impl_from_query_result(&model)
+}
+
+#[proc_macro_derive(ActiveModel, attributes(primary, simple_struct, relation))]
+pub fn derive_active_model(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+
+    let model = match parse(&input) {
+        Ok(model) => model,
+        Err(err) => return err.into_compile_error().into(),
+    };
+
+    impl_active_model(&model)
+}
+
+#[proc_macro_derive(IntoQuery, attributes(simple_struct, relation))]
+pub fn derive_into_query(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+
+    let model = match parse(&input) {
+        Ok(model) => model,
+        Err(err) => return err.into_compile_error().into(),
+    };
+
+    impl_into_query(&model)
 }
 
 #[proc_macro_derive(Model, attributes(primary, simple_struct, relation))]
