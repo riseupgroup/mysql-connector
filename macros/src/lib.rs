@@ -3,7 +3,7 @@ extern crate proc_macro;
 mod parse;
 
 use {
-    parse::{parse, parse_attr, parse_fields, Field, FieldType},
+    parse::{parse, Field, FieldType},
     proc_macro::TokenStream,
     proc_macro2::Span,
     quote::{format_ident, quote},
@@ -372,54 +372,40 @@ pub fn derive_into_query(input: TokenStream) -> TokenStream {
     .into()
 }
 
-#[proc_macro_derive(Model)]
+#[proc_macro_derive(Model, attributes(primary, simple_struct, relation))]
 pub fn derive_model(input: TokenStream) -> TokenStream {
-    let mut error = Error::empty();
     let input = parse_macro_input!(input as DeriveInput);
 
-    let (attr_span, attrs, types) = parse_attr(&mut error, input.ident.span(), &input.attrs);
-    let fields = parse_fields(&mut error, input.ident.span(), &input.data, &types);
+    let model = match parse(&input) {
+        Ok(model) => model,
+        Err(err) => return err.into_compile_error().into(),
+    };
 
-    let mut primary_type = None;
-    let mut auto_increment = false;
-    if let Some(span) = attr_span {
-        match attrs.get("primary") {
-            Some(primary) => match fields.iter().find(|field| field.ident == primary) {
-                Some(field) => primary_type = Some(&field.ty),
-                None => error.add(span, "primary not found in struct"),
-            },
-            None => error.add(
-                span,
-                "primary needed (#[mysql_connector(primary = \"...\")]",
-            ),
-        }
-        match attrs.get("auto_increment") {
-            Some(ai) => auto_increment = ai == "true",
-            None => error.add(
-                span,
-                "auto_increment needed (#[mysql_connector(auto_increment = \"...\")]",
-            ),
-        }
-    }
+    let (primary_key, auto_increment, primary_type) =
+        match model.fields.iter().find_map(|field| match field.r#type {
+            FieldType::Primary(auto_increment) => Some((&field.ident, auto_increment, &field.path)),
+            _ => None,
+        }) {
+            Some(x) => x,
+            None => {
+                return syn::Error::new(model.ident.span(), "missing primary key (`#[primary]`")
+                    .into_compile_error()
+                    .into()
+            }
+        };
 
-    if let Some(error) = error.error() {
-        return error.into_compile_error().into();
-    }
-
-    let primary = attrs.get("primary").unwrap();
-    let primary_type = primary_type.unwrap();
-    let primary_ident = Ident::new(primary, Span::call_site());
-    let ident = &input.ident;
+    let ident = &model.ident;
+    let primary_key_name = primary_key.to_string();
 
     quote! {
         impl mysql_connector::model::Model for #ident {
-            const PRIMARY: &'static str = #primary;
+            const PRIMARY: &'static str = #primary_key_name;
             const AUTO_INCREMENT: bool = #auto_increment;
 
             type Primary = #primary_type;
 
             fn primary(&self) -> Self::Primary {
-                self.#primary_ident
+                self.#primary_key
             }
         }
     }
