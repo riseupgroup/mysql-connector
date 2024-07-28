@@ -156,11 +156,12 @@ pub fn derive_from_query_result(input: TokenStream) -> TokenStream {
         }
 
         let set_own_mapping = quote! {
-            *match column.org_name() {
+            let column: &mut Option<usize> = match column.org_name() {
                 #(stringify!(#simple_field_names) => &mut self.#simple_field_names,)*
                 #(stringify!(#struct_field_names) => &mut self.#struct_field_names,)*
                 _ => return,
-            } = Some(index);
+            };
+            *column = Some(index);
         };
 
         if !fields.iter().any(TypeComplexity::complex) {
