@@ -340,63 +340,7 @@ fn impl_into_query(model: &Model) -> TokenStream {
     .into()
 }
 
-#[proc_macro_derive(ModelData, attributes(table))]
-pub fn derive_model_data(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
-
-    let model = match parse(&input) {
-        Ok(model) => model,
-        Err(err) => return err.into_compile_error().into(),
-    };
-
-    impl_model_data(&model)
-}
-
-#[proc_macro_derive(FromQueryResult, attributes(simple_struct, relation))]
-pub fn derive_from_query_result(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
-
-    let model = match parse(&input) {
-        Ok(model) => model,
-        Err(err) => return err.into_compile_error().into(),
-    };
-
-    impl_from_query_result(&model)
-}
-
-#[proc_macro_derive(ActiveModel, attributes(primary, simple_struct, relation))]
-pub fn derive_active_model(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
-
-    let model = match parse(&input) {
-        Ok(model) => model,
-        Err(err) => return err.into_compile_error().into(),
-    };
-
-    impl_active_model(&model)
-}
-
-#[proc_macro_derive(IntoQuery, attributes(simple_struct, relation))]
-pub fn derive_into_query(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
-
-    let model = match parse(&input) {
-        Ok(model) => model,
-        Err(err) => return err.into_compile_error().into(),
-    };
-
-    impl_into_query(&model)
-}
-
-#[proc_macro_derive(Model, attributes(primary, simple_struct, relation))]
-pub fn derive_model(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
-
-    let model = match parse(&input) {
-        Ok(model) => model,
-        Err(err) => return err.into_compile_error().into(),
-    };
-
+fn impl_model(model: &Model) -> TokenStream {
     let (primary_key, auto_increment, primary_type) =
         match model.fields.iter().find_map(|field| match field.r#type {
             FieldType::Primary(auto_increment) => Some((&field.ident, auto_increment, &field.path)),
@@ -426,4 +370,70 @@ pub fn derive_model(input: TokenStream) -> TokenStream {
         }
     }
     .into()
+}
+
+#[proc_macro_derive(ModelData, attributes(table))]
+pub fn derive_model_data(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+
+    let model = match parse(&input) {
+        Ok(model) => model,
+        Err(err) => return err.into_compile_error().into(),
+    };
+
+    impl_model_data(&model)
+}
+
+#[proc_macro_derive(FromQueryResult, attributes(primary, simple_struct, relation))]
+pub fn derive_from_query_result(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+
+    let model = match parse(&input) {
+        Ok(model) => model,
+        Err(err) => return err.into_compile_error().into(),
+    };
+
+    impl_from_query_result(&model)
+}
+
+#[proc_macro_derive(ActiveModel, attributes(primary, simple_struct, relation))]
+pub fn derive_active_model(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+
+    let model = match parse(&input) {
+        Ok(model) => model,
+        Err(err) => return err.into_compile_error().into(),
+    };
+
+    impl_active_model(&model)
+}
+
+#[proc_macro_derive(IntoQuery, attributes(primary, simple_struct, relation))]
+pub fn derive_into_query(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+
+    let model = match parse(&input) {
+        Ok(model) => model,
+        Err(err) => return err.into_compile_error().into(),
+    };
+
+    impl_into_query(&model)
+}
+
+#[proc_macro_derive(Model, attributes(table, primary, simple_struct, relation))]
+pub fn derive_model(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+
+    let model = match parse(&input) {
+        Ok(model) => model,
+        Err(err) => return err.into_compile_error().into(),
+    };
+
+    let mut token_stream = TokenStream::new();
+    token_stream.extend(Some(impl_model_data(&model)));
+    token_stream.extend(Some(impl_from_query_result(&model)));
+    token_stream.extend(Some(impl_active_model(&model)));
+    token_stream.extend(Some(impl_into_query(&model)));
+    token_stream.extend(Some(impl_model(&model)));
+    token_stream
 }
