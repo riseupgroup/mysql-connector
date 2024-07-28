@@ -3,7 +3,7 @@ extern crate proc_macro;
 mod parse;
 
 use {
-    parse::{parse, parse_attr, parse_fields, Field, FieldType, NamedField, TypeComplexity},
+    parse::{parse, parse_attr, parse_fields, Field, FieldType, TypeComplexity},
     proc_macro::TokenStream,
     proc_macro2::Span,
     quote::{format_ident, quote},
@@ -68,126 +68,121 @@ pub fn derive_model_data(input: TokenStream) -> TokenStream {
     }
 }
 
-#[proc_macro_derive(FromQueryResult, attributes(mysql_connector))]
+#[proc_macro_derive(FromQueryResult, attributes(simple_struct, relation))]
 pub fn derive_from_query_result(input: TokenStream) -> TokenStream {
-    let mut error = Error::empty();
     let input = parse_macro_input!(input as DeriveInput);
 
-    let (_, _, types) = parse_attr(&mut error, input.ident.span(), &input.attrs);
-    let fields = parse_fields(&mut error, input.ident.span(), &input.data, &types);
+    let model = match parse(&input) {
+        Ok(model) => model,
+        Err(err) => return err.into_compile_error().into(),
+    };
 
-    if let Some(error) = error.error() {
-        return error.into_compile_error().into();
-    }
-
-    let ident = &input.ident;
-    let visibility = &input.vis;
+    let visibility = &model.vis;
+    let ident = &model.ident;
     let mapping_ident = format_ident!("{ident}Mapping");
 
-    let simple_field_names: &Vec<&Ident> = &fields
-        .iter()
-        .filter(TypeComplexity::simple_ref)
-        .map(|x| &x.ident)
-        .collect();
-    let mut struct_field_names = Vec::new();
-    let mut set_struct_fields = proc_macro2::TokenStream::new();
-    for field in &fields {
-        if let TypeComplexity::Struct(r#struct) = &field.complexity {
-            let field_ident = &field.ident;
-            let struct_path = &r#struct.path;
-            let mapping_names = r#struct
-                .fields
-                .iter()
-                .map(|x| format_ident!("{}_{}", field.ident, x.1));
-            struct_field_names.extend(mapping_names.clone());
-            let struct_names = r#struct.fields.iter().map(|x| &x.0);
-            set_struct_fields = quote! {
-                #set_struct_fields
-                #field_ident: #struct_path {
-                    #(#struct_names: row[mapping.#mapping_names.ok_or(mysql_connector::error::ParseError::MissingField(
-                        concat!(stringify!(#ident), ".", stringify!(#mapping_names))
-                    ))?].take().try_into()?,)*
-                },
+    let mut struct_fields = proc_macro2::TokenStream::new();
+    let mut set_child_mapping = proc_macro2::TokenStream::new();
+    let mut set_own_mapping = proc_macro2::TokenStream::new();
+    let mut from_mapping_and_row = proc_macro2::TokenStream::new();
+    for Field {
+        ident: field_ident,
+        path,
+        r#type,
+    } in model.fields
+    {
+        match &r#type {
+            FieldType::Simple
+            | FieldType::Primary(_) => struct_fields.extend(Some(quote! { #field_ident: Option<usize>, })),
+            FieldType::Struct(simple_struct_fields) => {
+                for (_, struct_field_name) in simple_struct_fields {
+                    let mapping_name = format_ident!("{}_{}", field_ident, struct_field_name);
+                    struct_fields.extend(Some(quote! { #mapping_name: Option<usize>, }));
+                }
+            }
+            FieldType::Complex => struct_fields.extend(Some(quote! { #field_ident: <#path as mysql_connector::model::FromQueryResult>::Mapping,})),
+        }
+
+        match &r#type {
+            FieldType::Simple | FieldType::Primary(_) => {
+                set_own_mapping.extend(Some(quote! {
+                    stringify!(#field_ident) => &mut self.#field_ident,
+                }));
+            }
+            FieldType::Struct(struct_fields) => {
+                for (_, struct_field_name) in struct_fields {
+                    let mapping_name = format_ident!("{}_{}", field_ident, struct_field_name);
+                    set_own_mapping.extend(Some(quote! {
+                        stringify!(#mapping_name) => &mut self.#mapping_name,
+                    }));
+                }
+            }
+            FieldType::Complex => {
+                let name = field_ident.to_string();
+                let name_with_point = name.clone() + ".";
+                let len = name_with_point.as_bytes().len();
+
+                set_child_mapping.extend(Some(quote! {
+                    if table == #name {
+                        self.#field_ident.set_mapping(column, "", index);
+                    } else if table.starts_with(#name_with_point) {
+                        self.#field_ident.set_mapping(column, &table[#len..], index);
+                    } else
+                }));
             }
         }
-    }
-    let struct_field_names = &struct_field_names;
 
-    let complex_field_names: &Vec<&Ident> = &fields
-        .iter()
-        .filter(TypeComplexity::complex_ref)
-        .map(|x: &parse::NamedField| &x.ident)
-        .collect();
-    let complex_field_types: &Vec<&Type> = &fields
-        .iter()
-        .filter(TypeComplexity::complex_ref)
-        .map(|x| &x.ty)
-        .collect();
-
-    let set_mapping = {
-        let mut set_child_mapping = proc_macro2::TokenStream::new();
-
-        for (
-            i,
-            NamedField {
-                complexity: _,
-                //vis: _,
-                ident,
-                ty: _,
+        let from_mapping_and_row_field = match &r#type {
+            FieldType::Simple | FieldType::Primary(_) => quote! {
+                #field_ident: row[mapping.#field_ident.ok_or(mysql_connector::error::ParseError::MissingField(
+                    concat!(stringify!(#ident), ".", stringify!(#field_ident))
+                ))?].take().try_into()?,
             },
-        ) in fields
-            .iter()
-            .filter(TypeComplexity::complex_ref)
-            .enumerate()
-        {
-            let name = ident.to_string();
-            let name_with_point = name.clone() + ".";
-            let len = name_with_point.as_bytes().len();
-            let maybe_else = if i == 0 { None } else { Some(quote!(else)) };
+            FieldType::Struct(struct_fields) => {
+                let mut set_fields = proc_macro2::TokenStream::new();
 
-            set_child_mapping = quote! {
-                #set_child_mapping
-                #maybe_else if table == #name {
-                    self.#ident.set_mapping(column, "", index);
-                } else if table.starts_with(#name_with_point) {
-                    self.#ident.set_mapping(column, &table[#len..], index);
+                for (struct_field_ident, struct_field_name) in struct_fields {
+                    let mapping_name = format_ident!("{}_{}", field_ident, struct_field_name);
+                    set_fields.extend(Some(quote! {
+                        #struct_field_ident: row[mapping.#mapping_name.ok_or(mysql_connector::error::ParseError::MissingField(
+                            concat!(stringify!(#ident), ".", stringify!(#mapping_name))
+                        ))?].take().try_into()?,
+                    }));
                 }
-            };
-        }
 
-        let set_own_mapping = quote! {
+                quote! {
+                    #field_ident: #path {
+                       #set_fields
+                    },
+                }
+            }
+            FieldType::Complex => quote! {
+                #field_ident: <#path>::from_mapping_and_row(&mapping.#field_ident, row)?,
+            },
+        };
+        from_mapping_and_row.extend(Some(from_mapping_and_row_field));
+    }
+    set_child_mapping.extend(Some(quote! {
+        {
             let column: &mut Option<usize> = match column.org_name() {
-                #(stringify!(#simple_field_names) => &mut self.#simple_field_names,)*
-                #(stringify!(#struct_field_names) => &mut self.#struct_field_names,)*
+                #set_own_mapping
                 _ => return,
             };
             *column = Some(index);
-        };
-
-        if !fields.iter().any(TypeComplexity::complex) {
-            set_own_mapping
-        } else {
-            quote! {
-                #set_child_mapping
-                else {
-                    #set_own_mapping
-                }
-            }
         }
-    };
+    }));
+    drop(set_own_mapping);
 
     quote! {
         const _: () = {
             #[derive(Default)]
             #visibility struct #mapping_ident {
-                #(#simple_field_names: Option<usize>,)*
-                #(#struct_field_names: Option<usize>,)*
-                #(#complex_field_names: <#complex_field_types as mysql_connector::model::FromQueryResult>::Mapping,)*
+                #struct_fields
             }
 
             impl mysql_connector::model::FromQueryResultMapping<#ident> for #mapping_ident {
                 fn set_mapping_inner(&mut self, column: &mysql_connector::types::Column, table: &str, index: usize) {
-                    #set_mapping
+                    #set_child_mapping
                 }
             }
 
@@ -196,11 +191,7 @@ pub fn derive_from_query_result(input: TokenStream) -> TokenStream {
 
                 fn from_mapping_and_row(mapping: &Self::Mapping, row: &mut std::vec::Vec<mysql_connector::types::Value>) -> std::result::Result<Self, mysql_connector::error::ParseError> {
                     Ok(Self {
-                        #(#simple_field_names: row[mapping.#simple_field_names.ok_or(mysql_connector::error::ParseError::MissingField(
-                            concat!(stringify!(#ident), ".", stringify!(#simple_field_names))
-                        ))?].take().try_into()?,)*
-                        #set_struct_fields
-                        #(#complex_field_names: <#complex_field_types>::from_mapping_and_row(&mapping.#complex_field_names, row)?,)*
+                        #from_mapping_and_row
                     })
                 }
             }

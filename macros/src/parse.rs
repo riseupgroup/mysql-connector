@@ -7,7 +7,7 @@ use {
     syn::{
         punctuated::Punctuated, spanned::Spanned, token, Attribute, Data, DeriveInput, Expr,
         ExprLit, Fields, GenericArgument, Ident, Lit, Member, Meta, MetaNameValue, Path,
-        PathArguments, PathSegment, Token, Type, TypePath,
+        PathArguments, PathSegment, Token, Type, TypePath, Visibility,
     },
 };
 
@@ -26,6 +26,7 @@ pub struct Field {
 }
 
 pub struct Model {
+    pub vis: Visibility,
     pub ident: Ident,
     pub table: Option<String>,
     pub fields: Vec<Field>,
@@ -160,6 +161,7 @@ pub(crate) fn parse(input: &DeriveInput) -> Result<Model, syn::Error> {
                     match error.error() {
                         Some(err) => Err(err),
                         None => Ok(Model {
+                            vis: input.vis.clone(),
                             ident: input.ident.clone(),
                             table,
                             fields,
