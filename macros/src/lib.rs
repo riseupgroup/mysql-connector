@@ -42,24 +42,29 @@ impl Error {
 pub fn derive_model_data(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
 
-    match parse(&input) {
-        Ok(model) => {
-            match model.table {
-                Some(table) => {
-                    let ident = &model.ident;
-                    let table_with_point = table.to_owned() + ".";
-                    quote! {
-                        impl mysql_connector::model::ModelData for #ident {
-                            const TABLE: &'static str = #table;
-                            const TABLE_WITH_POINT: &'static str = #table_with_point;
-                        }
-                    }
-                    .into()
+    let model = match parse(&input) {
+        Ok(model) => model,
+        Err(err) => return err.into_compile_error().into(),
+    };
+
+    match model.table {
+        Some(table) => {
+            let ident = &model.ident;
+            let table_with_point = table.to_owned() + ".";
+            quote! {
+                impl mysql_connector::model::ModelData for #ident {
+                    const TABLE: &'static str = #table;
+                    const TABLE_WITH_POINT: &'static str = #table_with_point;
                 }
-                None => syn::Error::new(input.ident.span(), "missing `table` attribute (`#[table(table_name)]`").into_compile_error().into()
             }
-        },
-        Err(err) => err.into_compile_error().into()
+            .into()
+        }
+        None => syn::Error::new(
+            input.ident.span(),
+            "missing `table` attribute (`#[table(table_name)]`",
+        )
+        .into_compile_error()
+        .into(),
     }
 }
 
